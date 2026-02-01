@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const Ajv = require("ajv");
+const Ajv2020 = require("ajv/dist/2020");
 const addFormats = require("ajv-formats");
 
 function readJson(p) {
@@ -15,7 +15,7 @@ function main() {
 
   const schema = readJson(schemaPath);
 
-  const ajv = new Ajv({
+  const ajv = new Ajv2020({
     strict: false,
     allErrors: true,
   });
@@ -35,6 +35,7 @@ function main() {
     const fp = path.join(examplesDir, f);
     const data = readJson(fp);
     const valid = validate(data);
+
     if (!valid) {
       ok = false;
       console.error(`✗ ${f} invalid:`);
