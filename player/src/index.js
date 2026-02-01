@@ -8,10 +8,12 @@
  *     - validate it against the shared JSON Schema
  *     - normalize it into a deterministic internal model
  *     - print a stable playlist summary
+ *     - (Phase 3) accept simulated events over HTTP and run a strict FSM
  *
  * WHY THIS EXISTS
  *   We want correctness before any UI/rendering. The Player must be able to reject
- *   invalid configs early and behave predictably for valid configs.
+ *   invalid configs early and behave predictably for valid configs. Then we add
+ *   event reaction without hardware, still without rendering.
  *
  * LIFECYCLE
  *   1) Parse args/env to locate a config file
@@ -19,7 +21,8 @@
  *   3) Validate JSON against shared schema (Ajv2020)
  *   4) Convert to internal model (Playlist + RenderItem)
  *   5) Enforce logical constraints (e.g., no duplicate `order`)
- *   6) Print deterministic summary and exit 0
+ *   6) Print deterministic summary
+ *   7) If --serve is enabled: start local HTTP event server + FSM
  *
  * INPUTS
  *   - Config path via:
@@ -28,6 +31,9 @@
  *   - Mode via:
  *       --mode dev|prod
  *       IDS_MODE=dev|prod
+ *   - Server via:
+ *       --serve
+ *       --port <number>   (default 7070)
  *
  * OUTPUTS
  *   - Human-readable console logs
@@ -37,12 +43,14 @@
  *       2 usage / missing files
  *
  * BOUNDARIES
- *   - No rendering
- *   - No event handling
- *   - No network / hardware integration
+ *   - No rendering (yet)
+ *   - No real hardware integration (events are simulated)
  *
  * HOW TO RUN (from repo root)
  *   node player/src/index.js --config shared/contract/examples/config.welcome.json --mode dev
+ *
+ *   Start event simulation server:
+ *   node player/src/index.js --config shared/contract/examples/config.welcome.json --serve
  */
 
 const fs = require("fs");
@@ -50,6 +58,8 @@ const path = require("path");
 
 const Ajv2020 = require("ajv/dist/2020");
 const addFormats = require("ajv-formats");
+
+const { createServer } = require("./server");
 
 // -------------------------
 // CLI / ENV parsing
@@ -59,6 +69,8 @@ function parseArgs(argv) {
   const args = {
     configPath: process.env.IDS_CONFIG || null,
     mode: process.env.IDS_MODE || "dev",
+    serve: false,
+    port: 7070,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -71,6 +83,21 @@ function parseArgs(argv) {
 
     if (a === "--mode" && i + 1 < argv.length) {
       args.mode = argv[++i];
+      continue;
+    }
+
+    if (a === "--serve") {
+      args.serve = true;
+      continue;
+    }
+
+    if (a === "--port" && i + 1 < argv.length) {
+      const p = Number(argv[++i]);
+      if (!Number.isInteger(p) || p <= 0 || p > 65535) {
+        args.portInvalid = true;
+      } else {
+        args.port = p;
+      }
       continue;
     }
 
@@ -87,10 +114,10 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  console.log("IDS Player (Phase 2 — core logic only)");
+  console.log("IDS Player (Phase 2+3 — core logic + simulated events)");
   console.log("");
   console.log("Usage:");
-  console.log("  node player/src/index.js --config <path> [--mode dev|prod]");
+  console.log("  node player/src/index.js --config <path> [--mode dev|prod] [--serve] [--port <n>]");
   console.log("");
   console.log("Environment:");
   console.log("  IDS_CONFIG=<path>");
@@ -209,6 +236,11 @@ function main() {
     process.exit(0);
   }
 
+  if (args.portInvalid) {
+    console.error("Invalid port. Use --port <1..65535>.");
+    process.exit(2);
+  }
+
   if (args.unknown && args.unknown.length > 0) {
     console.error("Unknown arguments:", args.unknown.join(" "));
     printUsage();
@@ -279,9 +311,16 @@ function main() {
     process.exit(1);
   }
 
-  // Log metadata + deterministic summary
+  // Summary
   printSummary(playlist, mode);
-  process.exit(0);
+
+  // Phase 3: start event server if requested
+  if (args.serve) {
+    createServer({ port: args.port });
+  } else {
+    process.exit(0);
+  }
 }
 
 main();
+
