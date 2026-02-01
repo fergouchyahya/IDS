@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/ids/config.schema.json",
+  "title": "IDS Player Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["campaignId", "campaignName", "campaignPriority", "generatedAt", "items"],
+  "properties": {
+    "campaignId": { "type": "string", "minLength": 1 },
+    "campaignName": { "type": "string", "minLength": 1 },
+    "campaignPriority": { "type": "integer" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contentId", "type", "data", "durationSec", "order"],
+        "properties": {
+          "contentId": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["TEXT", "IMAGE", "VIDEO"] },
+          "data": { "type": "string" },
+          "durationSec": { "type": "integer", "minimum": 1 },
+          "order": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

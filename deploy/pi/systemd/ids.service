@@ -1,0 +1,12 @@
+[Unit]
+Description=IDS Player (placeholder)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/ids/ids.env
+ExecStart=/usr/bin/echo "IDS placeholder"
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+{
+  "campaignId": "demo-media",
+  "campaignName": "Demo media loop",
+  "campaignPriority": 1,
+  "generatedAt": "2026-02-01T10:00:00Z",
+  "items": [
+    {
+      "contentId": "img-1",
+      "type": "IMAGE",
+      "data": "assets-demo/images/example.jpg",
+      "durationSec": 8,
+      "order": 1
+    },
+    {
+      "contentId": "vid-1",
+      "type": "VIDEO",
+      "data": "assets-demo/videos/example.mp4",
+      "durationSec": 12,
+      "order": 2
+    }
+  ]
+}

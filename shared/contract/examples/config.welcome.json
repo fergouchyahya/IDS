@@ -1,0 +1,15 @@
+{
+  "campaignId": "demo-welcome",
+  "campaignName": "Welcome message",
+  "campaignPriority": 10,
+  "generatedAt": "2026-02-01T10:00:00Z",
+  "items": [
+    {
+      "contentId": "welcome-1",
+      "type": "TEXT",
+      "data": "Welcome to IDS",
+      "durationSec": 10,
+      "order": 1
+    }
+  ]
+}
