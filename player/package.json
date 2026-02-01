@@ -1,0 +1,14 @@
+{
+    "name": "@ids/player",
+    "version": "0.1.0",
+    "private": true,
+    "type": "commonjs",
+    "scripts": {
+        "start": "node src/index.js"
+    },
+    "dependencies": {
+        "ajv": "^8.17.0",
+        "ajv-formats": "^3.0.1"
+    }
+}
+
