@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/ids/config.schema.json",
-  "$comment": "IDS — Player Config Schema (shared/contract/schema/config.schema.json)\n\nPURPOSE\n  This JSON Schema defines what a valid 'player config' looks like.\n  It is the shared contract between:\n    - admin (control plane): produces configs\n    - player (runtime): consumes configs\n\nWHY THIS EXISTS\n  The player must never rely on 'best effort' parsing of configs.\n  If configs are wrong, the system becomes unpredictable (wrong content shown, crashes, undefined behavior).\n  This schema makes the config format explicit, testable, and enforceable in CI.\n\nWHAT THIS SCHEMA DESCRIBES\n  A config represents one campaign with metadata and an ordered list of items to render.\n  Minimal core fields:\n    - campaignId, campaignName, campaignPriority\n    - generatedAt (date-time)\n    - items[] (playlist entries with duration and order)\n\nINPUT / OUTPUT\n  Input: JSON produced by admin or demo examples.\n  Output: Validation success/failure via AJV (see scripts/validate-config.js).\n\nBOUNDARIES\n  This schema describes structure and basic constraints only.\n  It does NOT describe runtime behavior (preemption rules, timeout policies, event routing).\n  Those behaviors belong in player logic and higher-level docs.\n\nEVOLUTION RULES (IMPORTANT)\n  - Changes to this file are breaking changes unless examples and player/admin are updated together.\n  - Every schema update must come with:\n      1) updated examples in shared/contract/examples/\n      2) passing `make validate`\n      3) a short note in docs/decisions/ or docs/architecture/ if it changes semantics.\n",
+  "$comment": "/*\nIDS — Player Config Schema (v0.1)\n\nPURPOSE\n  This schema defines the single source of truth for what the IDS Player accepts\n  as a configuration. Admin (producer) must generate JSON that validates here.\n\nDECISIONS (LOCKED)\n  - Ordering is explicit via `order` (NOT array position).\n  - Duration is strict: durationSec >= 1 (0 is forbidden).\n  - Strict schema: additionalProperties is false (no silent/unknown fields).\n  - Comments are allowed via a `$comment` string field.\n\nSEMANTICS OVERVIEW\n  A config = one campaign with metadata and an ordered list of items.\n  The Player renders items in ascending `order`.\n\nEVOLUTION RULES\n  Any change here must:\n    1) Update examples in shared/contract/examples/\n    2) Keep `make validate` passing\n    3) Be paired with player/admin changes if semantics change\n*/",
   "title": "IDS Player Config",
   "type": "object",
   "additionalProperties": false,
@@ -13,58 +13,83 @@
     "items"
   ],
   "properties": {
+    "$comment": {
+      "type": "string",
+      "$comment": "/*\nOptional human-facing explanation. Useful inside examples.\nIgnored by the player logic.\n*/"
+    },
     "campaignId": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "$comment": "/*\nStable identifier for this campaign.\nShould be unique across campaigns.\n*/"
     },
     "campaignName": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "$comment": "/*\nHuman-readable name for logs and admin UI.\n*/"
     },
     "campaignPriority": {
-      "type": "integer"
+      "type": "integer",
+      "$comment": "/*\nPriority used by the scheduler (higher = more important).\nDoes not define playlist order inside a campaign.\n*/"
     },
     "generatedAt": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "$comment": "/*\nWhen this config was generated.\nUsed for debugging reproducibility and freshness.\n*/"
     },
     "items": {
       "type": "array",
       "minItems": 1,
+      "$comment": "/*\nPlaylist items. The Player must render items in ascending `order`.\nArray index is not semantic; `order` is.\n*/",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "contentId",
-          "type",
-          "data",
-          "durationSec",
-          "order"
-        ],
-        "properties": {
-          "contentId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "TEXT",
-              "IMAGE",
-              "VIDEO"
-            ]
-          },
-          "data": {
-            "type": "string"
-          },
-          "durationSec": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "order": {
-            "type": "integer",
-            "minimum": 1
-          }
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contentId",
+        "type",
+        "data",
+        "durationSec",
+        "order"
+      ],
+      "$comment": "/*\nOne renderable entry in the playlist.\n*/",
+      "properties": {
+        "$comment": {
+          "type": "string",
+          "$comment": "/*\nOptional human-facing explanation for this item.\n*/"
+        },
+        "contentId": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "/*\nStable identifier for this item.\nUseful for logs, debugging, and future analytics.\n*/"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "TEXT",
+            "IMAGE",
+            "VIDEO"
+          ],
+          "$comment": "/*\nItem type semantics:\n  - TEXT: `data` is the literal text content to display.\n  - IMAGE: `data` is a path or URL pointing to an image.\n  - VIDEO: `data` is a path or URL pointing to a video.\n\nNote: This schema allows both paths and URLs as strings.\nRuntime resolution rules belong to the Player.\n*/"
+        },
+        "data": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "/*\nPayload associated with the item.\nMeaning depends on `type`.\n*/"
+        },
+        "durationSec": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "/*\nHow long to display this item (in seconds).\nDecision locked: durationSec must be >= 1.\n*/"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "/*\nExplicit playlist order. The Player sorts items by ascending `order`.\nDecision locked: ordering is NOT by array position.\n*/"
         }
       }
     }

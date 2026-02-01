@@ -1,10 +1,12 @@
 {
+  "$comment": "/*\nIDS — Example Config: Media loop (realistic)\n\nWHY THIS EXISTS\n  Demonstrates non-text content types and realistic asset paths.\n\nWHAT IT SHOULD DEMO\n  - IMAGE item with a repo path (assets-demo/images/...)\n  - VIDEO item with a repo path (assets-demo/videos/...)\n  - Ordering is explicit via `order`\n\nEDITING NOTES\n  - Keep paths realistic and aligned with assets-demo/.\n  - If you change asset names, update this file too.\n*/",
   "campaignId": "demo-media",
   "campaignName": "Demo media loop",
   "campaignPriority": 1,
   "generatedAt": "2026-02-01T10:00:00Z",
   "items": [
     {
+      "$comment": "/*\nIMAGE example.\n`data` is a path (could also be a URL later).\n*/",
       "contentId": "img-1",
       "type": "IMAGE",
       "data": "assets-demo/images/example.jpg",
@@ -12,6 +14,7 @@
       "order": 1
     },
     {
+      "$comment": "/*\nVIDEO example.\n`data` is a path (could also be a URL later).\n*/",
       "contentId": "vid-1",
       "type": "VIDEO",
       "data": "assets-demo/videos/example.mp4",
