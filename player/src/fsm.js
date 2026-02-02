@@ -48,7 +48,7 @@ function transition(currentState, eventType) {
   if (eventType === "VISION_PRESENT") {
     if (currentState === STATES.IDLE) return { nextState: STATES.INTERACTIVE, changed: true };
     if (currentState === STATES.INTERACTIVE) return { nextState: STATES.INTERACTIVE, changed: false };
-    if (currentState === STATES.PLAYING) return { nextState: STATES.PLAYING, changed: false };
+    if (currentState === STATES.PLAYING) return { nextState: STATES.PLAYING, changed: false }; 
   }
 
   if (eventType === "NFC_TAP") {
