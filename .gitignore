@@ -24,3 +24,6 @@ build/
 
 # Logs
 *.log
+
+*.mp4
+*.png
