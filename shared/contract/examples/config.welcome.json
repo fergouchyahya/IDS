@@ -1,17 +1,22 @@
 {
   "$comment": "/*\nIDS — Example Config: Welcome (minimal)\n\nWHY THIS EXISTS\n  This is the smallest config that should always validate and always render.\n  It is the 'hello world' of IDS.\n\nWHAT IT SHOULD DEMO\n  - Player can load + validate config\n  - Player can render a TEXT item for durationSec seconds\n\nEDITING NOTES\n  - Keep this file minimal forever.\n  - If you need more fields, create a new example instead.\n*/",
-  "campaignId": "demo-welcome",
-  "campaignName": "Welcome message",
-  "campaignPriority": 10,
-  "generatedAt": "2026-02-01T10:00:00Z",
-  "items": [
+  "campaigns": [
     {
-      "$comment": "/*\nSingle TEXT item.\n`data` is literal text.\n*/",
-      "contentId": "welcome-1",
-      "type": "TEXT",
-      "data": "Welcome to IDS",
-      "durationSec": 10,
-      "order": 1
+      "$comment": "/*\nSingle campaign with a single TEXT item.\n*/",
+      "campaignId": "demo-welcome",
+      "campaignName": "Welcome message",
+      "campaignPriority": 10,
+      "generatedAt": "2026-02-01T10:00:00Z",
+      "items": [
+        {
+          "$comment": "/*\nSingle TEXT item.\n`data` is literal text.\n*/",
+          "contentId": "welcome-1",
+          "type": "TEXT",
+          "data": "Welcome to IDS",
+          "durationSec": 10,
+          "order": 1
+        }
+      ]
     }
   ]
 }
