@@ -7,7 +7,7 @@
  *     - load a config from disk
  *     - validate it against the shared JSON Schema
  *     - normalize it into a deterministic internal model
- *     - print a stable playlist summary
+ *     - print a stable campaign summary
  *     - (Phase 3) accept simulated events over HTTP and run a strict FSM
  *
  * WHY THIS EXISTS
@@ -19,7 +19,7 @@
  *   1) Parse args/env to locate a config file
  *   2) Load JSON
  *   3) Validate JSON against shared schema (Ajv2020)
- *   4) Convert to internal model (Playlist + RenderItem)
+ *   4) Convert to internal model (Campaign + RenderItem)
  *   5) Enforce logical constraints (e.g., no duplicate `order`)
  *   6) Print deterministic summary
  *   7) If --serve is enabled: start local HTTP event server + FSM
@@ -61,6 +61,7 @@ const addFormats = require("ajv-formats");
 
 const { createServer } = require("./server");
 const DummyRenderer = require("./renderer/DummyRenderer");
+const { Scheduler } = require("./scheduler");
 // -------------------------
 // CLI / ENV parsing
 // -------------------------
@@ -71,6 +72,9 @@ function parseArgs(argv) {
     mode: process.env.IDS_MODE || "dev",
     serve: false,
     port: 7070,
+    inactivitySec: process.env.IDS_INACTIVITY_SEC
+      ? Number(process.env.IDS_INACTIVITY_SEC)
+      : null,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -101,6 +105,16 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === "--inactivity" && i + 1 < argv.length) {
+      const s = Number(argv[++i]);
+      if (!Number.isInteger(s) || s <= 0) {
+        args.inactivityInvalid = true;
+      } else {
+        args.inactivitySec = s;
+      }
+      continue;
+    }
+
     if (a === "--help" || a === "-h") {
       args.help = true;
       continue;
@@ -117,11 +131,14 @@ function printUsage() {
   console.log("IDS Player (Phase 2+3 — core logic + simulated events)");
   console.log("");
   console.log("Usage:");
-  console.log("  node player/src/index.js --config <path> [--mode dev|prod] [--serve] [--port <n>]");
+  console.log(
+    "  node player/src/index.js --config <path> [--mode dev|prod] [--serve] [--port <n>] [--inactivity <sec>]"
+  );
   console.log("");
   console.log("Environment:");
   console.log("  IDS_CONFIG=<path>");
   console.log("  IDS_MODE=dev|prod");
+  console.log("  IDS_INACTIVITY_SEC=<seconds>");
 }
 
 // -------------------------
@@ -166,7 +183,7 @@ class RenderItem {
   }
 }
 
-class Playlist {
+class Campaign {
   constructor({ campaignId, campaignName, campaignPriority, generatedAt, items }) {
     this.campaignId = campaignId;
     this.campaignName = campaignName;
@@ -177,30 +194,44 @@ class Playlist {
 }
 
 function toInternalModel(config) {
-  const items = config.items.map((it) => new RenderItem(it));
+  const campaigns = config.campaigns.map((c) => {
+    const items = c.items.map((it) => new RenderItem(it));
 
-  // Deterministic ordering: sort by explicit `order`, then contentId as tie-breaker
-  items.sort((a, b) => {
-    if (a.order !== b.order) return a.order - b.order;
-    return String(a.contentId).localeCompare(String(b.contentId));
+    // Deterministic ordering: sort by explicit `order`, then contentId as tie-breaker
+    items.sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return String(a.contentId).localeCompare(String(b.contentId));
+    });
+
+    return new Campaign({
+      campaignId: c.campaignId,
+      campaignName: c.campaignName,
+      campaignPriority: c.campaignPriority,
+      generatedAt: c.generatedAt,
+      items,
+    });
   });
 
-  return new Playlist({
-    campaignId: config.campaignId,
-    campaignName: config.campaignName,
-    campaignPriority: config.campaignPriority,
-    generatedAt: config.generatedAt,
-    items,
+  // Deterministic campaign ordering (priority desc, then campaignId)
+  campaigns.sort((a, b) => {
+    if (a.campaignPriority !== b.campaignPriority) return b.campaignPriority - a.campaignPriority;
+    return String(a.campaignId).localeCompare(String(b.campaignId));
   });
+
+  return campaigns;
 }
 
-function assertNoDuplicateOrder(items) {
-  const seen = new Set();
-  for (const it of items) {
-    if (seen.has(it.order)) {
-      throw new Error(`Duplicate item order detected: order=${it.order}`);
+function assertNoDuplicateOrder(campaigns) {
+  for (const campaign of campaigns) {
+    const seen = new Set();
+    for (const it of campaign.items) {
+      if (seen.has(it.order)) {
+        throw new Error(
+          `Duplicate item order detected: campaign=${campaign.campaignId} order=${it.order}`
+        );
+      }
+      seen.add(it.order);
     }
-    seen.add(it.order);
   }
 }
 
@@ -208,19 +239,23 @@ function assertNoDuplicateOrder(items) {
 // Output
 // -------------------------
 
-function printSummary(playlist, mode) {
-  console.log("=== IDS Player — Playlist Summary ===");
+function printSummary(campaigns, mode) {
+  console.log("=== IDS Player — Campaign Summary ===");
   console.log(`Mode: ${mode}`);
-  console.log(`Campaign: ${playlist.campaignName} (${playlist.campaignId})`);
-  console.log(`Priority: ${playlist.campaignPriority}`);
-  console.log(`GeneratedAt: ${playlist.generatedAt}`);
-  console.log(`Items: ${playlist.items.length}`);
+  console.log(`Campaigns: ${campaigns.length}`);
   console.log("");
 
-  for (const it of playlist.items) {
-    console.log(
-      `#${it.order} [${it.type}] id=${it.contentId} duration=${it.durationSec}s data=${it.data}`
-    );
+  for (const c of campaigns) {
+    console.log(`Campaign: ${c.campaignName} (${c.campaignId})`);
+    console.log(`Priority: ${c.campaignPriority}`);
+    console.log(`GeneratedAt: ${c.generatedAt}`);
+    console.log(`Items: ${c.items.length}`);
+    for (const it of c.items) {
+      console.log(
+        `  #${it.order} [${it.type}] id=${it.contentId} duration=${it.durationSec}s data=${it.data}`
+      );
+    }
+    console.log("");
   }
 }
 
@@ -238,6 +273,11 @@ function main() {
 
   if (args.portInvalid) {
     console.error("Invalid port. Use --port <1..65535>.");
+    process.exit(2);
+  }
+
+  if (args.inactivityInvalid) {
+    console.error("Invalid inactivity timeout. Use --inactivity <seconds>.");
     process.exit(2);
   }
 
@@ -301,10 +341,10 @@ function main() {
   }
 
   // Convert + logical checks
-  let playlist;
+  let campaigns;
   try {
-    playlist = toInternalModel(config);
-    assertNoDuplicateOrder(playlist.items);
+    campaigns = toInternalModel(config);
+    assertNoDuplicateOrder(campaigns);
   } catch (e) {
     console.error("Config is valid JSON+schema, but fails logical checks:");
     console.error("-", e.message);
@@ -312,15 +352,19 @@ function main() {
   }
 
   // Summary
-  printSummary(playlist, mode);
+  printSummary(campaigns, mode);
 
   // Phase 3: start event server if requested
   if (args.serve) {
     const renderer = new DummyRenderer();
-    createServer({ 
-        renderer: renderer, 
-        playlist: playlist, 
-        port: args.port 
+    const inactivityMs =
+      Number.isInteger(args.inactivitySec) && args.inactivitySec > 0
+        ? args.inactivitySec * 1000
+        : undefined;
+    const scheduler = new Scheduler({ renderer, campaigns, inactivityMs });
+    createServer({
+      scheduler,
+      port: args.port,
     });
   } else {
     process.exit(0);
@@ -328,4 +372,3 @@ function main() {
 }
 
 main();
-

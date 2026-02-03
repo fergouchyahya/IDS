@@ -1,36 +1,41 @@
 {
-  "campaignId": "campagne-mixte-demo",
-  "campaignName": "Demo Contenu Mixte",
-  "campaignPriority": 1,
-  "generatedAt": "2026-02-02T10:00:00Z",
-  "items": [
+  "$comment": "/*\nIDS — Example Config: Mixed content\nUpdated for multi-campaign schema.\n*/",
+  "campaigns": [
     {
-      "contentId": "slide-1-bienvenue",
-      "type": "TEXT",
-      "data": "Bienvenue - Matin",
-      "durationSec": 3,
-      "order": 1
-    },
-    {
-      "contentId": "slide-2-photo-groupe",
-      "type": "IMAGE",
-      "data": "/assets/photos/groupe_promo.jpg",
-      "durationSec": 4,
-      "order": 2
-    },
-    {
-      "contentId": "slide-3-video-projet",
-      "type": "VIDEO",
-      "data": "/assets/videos/demo_projet.mp4",
-      "durationSec": 5,
-      "order": 3
-    },
-    {
-      "contentId": "slide-4-rappel",
-      "type": "TEXT",
-      "data": "N'oubliez pas de badger !",
-      "durationSec": 2,
-      "order": 4
+      "campaignId": "campagne-mixte-demo",
+      "campaignName": "Demo Contenu Mixte",
+      "campaignPriority": 1,
+      "generatedAt": "2026-02-02T10:00:00Z",
+      "items": [
+        {
+          "contentId": "slide-1-bienvenue",
+          "type": "TEXT",
+          "data": "Bienvenue - Matin",
+          "durationSec": 3,
+          "order": 1
+        },
+        {
+          "contentId": "slide-2-photo-groupe",
+          "type": "IMAGE",
+          "data": "/assets/photos/groupe_promo.jpg",
+          "durationSec": 4,
+          "order": 2
+        },
+        {
+          "contentId": "slide-3-video-projet",
+          "type": "VIDEO",
+          "data": "/assets/videos/demo_projet.mp4",
+          "durationSec": 5,
+          "order": 3
+        },
+        {
+          "contentId": "slide-4-rappel",
+          "type": "TEXT",
+          "data": "N'oubliez pas de badger !",
+          "durationSec": 2,
+          "order": 4
+        }
+      ]
     }
   ]
 }

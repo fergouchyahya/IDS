@@ -1,51 +1,73 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/ids/config.schema.json",
-  "$comment": "/*\nIDS — Player Config Schema (v0.1)\n\nPURPOSE\n  This schema defines the single source of truth for what the IDS Player accepts\n  as a configuration. Admin (producer) must generate JSON that validates here.\n\nDECISIONS (LOCKED)\n  - Ordering is explicit via `order` (NOT array position).\n  - Duration is strict: durationSec >= 1 (0 is forbidden).\n  - Strict schema: additionalProperties is false (no silent/unknown fields).\n  - Comments are allowed via a `$comment` string field.\n\nSEMANTICS OVERVIEW\n  A config = one campaign with metadata and an ordered list of items.\n  The Player renders items in ascending `order`.\n\nEVOLUTION RULES\n  Any change here must:\n    1) Update examples in shared/contract/examples/\n    2) Keep `make validate` passing\n    3) Be paired with player/admin changes if semantics change\n*/",
+  "$comment": "/*\nIDS — Player Config Schema (v0.2)\n\nPURPOSE\n  This schema defines the single source of truth for what the IDS Player accepts\n  as a configuration. Admin (producer) must generate JSON that validates here.\n\nDECISIONS (LOCKED)\n  - Multiple campaigns are allowed; player resolves priority at runtime.\n  - Ordering is explicit via `order` (NOT array position).\n  - Duration is strict: durationSec >= 1 (0 is forbidden).\n  - Strict schema: additionalProperties is false (no silent/unknown fields).\n  - Comments are allowed via a `$comment` string field.\n\nSEMANTICS OVERVIEW\n  A config = a list of campaigns. Each campaign contains an ordered list of items.\n  The Player renders items in ascending `order` inside a campaign.\n  Campaigns are selected by priority at runtime.\n\nEVOLUTION RULES\n  Any change here must:\n    1) Update examples in shared/contract/examples/\n    2) Keep `make validate` passing\n    3) Be paired with player/admin changes if semantics change\n*/",
   "title": "IDS Player Config",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "campaignId",
-    "campaignName",
-    "campaignPriority",
-    "generatedAt",
-    "items"
+    "campaigns"
   ],
   "properties": {
     "$comment": {
       "type": "string",
       "$comment": "/*\nOptional human-facing explanation. Useful inside examples.\nIgnored by the player logic.\n*/"
     },
-    "campaignId": {
-      "type": "string",
-      "minLength": 1,
-      "$comment": "/*\nStable identifier for this campaign.\nShould be unique across campaigns.\n*/"
-    },
-    "campaignName": {
-      "type": "string",
-      "minLength": 1,
-      "$comment": "/*\nHuman-readable name for logs and admin UI.\n*/"
-    },
-    "campaignPriority": {
-      "type": "integer",
-      "$comment": "/*\nPriority used by the scheduler (higher = more important).\nDoes not define playlist order inside a campaign.\n*/"
-    },
-    "generatedAt": {
-      "type": "string",
-      "format": "date-time",
-      "$comment": "/*\nWhen this config was generated.\nUsed for debugging reproducibility and freshness.\n*/"
-    },
-    "items": {
+    "campaigns": {
       "type": "array",
       "minItems": 1,
-      "$comment": "/*\nPlaylist items. The Player must render items in ascending `order`.\nArray index is not semantic; `order` is.\n*/",
+      "$comment": "/*\nList of campaigns. The Player selects campaigns by priority at runtime.\n*/",
       "items": {
-        "$ref": "#/$defs/item"
+        "$ref": "#/$defs/campaign"
       }
     }
   },
   "$defs": {
+    "campaign": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "campaignId",
+        "campaignName",
+        "campaignPriority",
+        "generatedAt",
+        "items"
+      ],
+      "$comment": "/*\nOne campaign with metadata and a playlist.\n*/",
+      "properties": {
+        "$comment": {
+          "type": "string",
+          "$comment": "/*\nOptional human-facing explanation for this campaign.\n*/"
+        },
+        "campaignId": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "/*\nStable identifier for this campaign.\nShould be unique across campaigns.\n*/"
+        },
+        "campaignName": {
+          "type": "string",
+          "minLength": 1,
+          "$comment": "/*\nHuman-readable name for logs and admin UI.\n*/"
+        },
+        "campaignPriority": {
+          "type": "integer",
+          "$comment": "/*\nPriority used by the scheduler (higher = more important).\nDoes not define playlist order inside a campaign.\n*/"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "$comment": "/*\nWhen this campaign was generated.\nUsed for debugging reproducibility and freshness.\n*/"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "$comment": "/*\nPlaylist items. The Player must render items in ascending `order`.\nArray index is not semantic; `order` is.\n*/",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        }
+      }
+    },
     "item": {
       "type": "object",
       "additionalProperties": false,
