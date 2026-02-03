@@ -47,7 +47,7 @@ function json(res, code, obj) {
   res.end(body);
 }
 
-function createServer({ port = 7070 } = {}) {
+function createServer({ renderer, playlist, port = 7070 } = {}) {
   let state = STATES.IDLE;
 
   const server = http.createServer(async (req, res) => {
@@ -88,7 +88,22 @@ function createServer({ port = 7070 } = {}) {
           console.log(`state: ${prev} (no change)`);
         }
 
-        return json(res, 200, { ok: true, prevState: prev, nextState: state, changed: t.changed });
+        
+        // Si l'état change vers "PlayingCampaign" (suite à un NFC_TAP), on affiche.
+        if (state === STATES.PLAYING && t.changed) {
+            console.log("[SERVER] Triggering Playlist Display");
+            renderer.displayPlaylist(playlist.items);
+        }
+        
+        // Optionnel : Si on revient en IDLE on clear
+        if (state === STATES.IDLE && t.changed) {
+             console.log("[SERVER] Stopping/Clearing Display");
+             renderer.clear();
+        }
+
+        return( json(res, 200, { ok: true, prevState: prev, nextState: state, changed: t.changed }));
+        renderer.displayPlaylist(playlist.items);
+
       } catch (e) {
         console.log("=== STATE ERROR ===");
         console.log(e.message);

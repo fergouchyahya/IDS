@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDS Player</title>
+    <style>
+        /* 1. Reset & Fullscreen (Style Kiosque) */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000; /* Fond noir [cite: 13] */
+            overflow: hidden;          /* Pas de barre de défilement */
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+            
+            /* Centrage parfait du contenu */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 2. Le Conteneur Principal */
+        #app {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* 3. Styles des Médias (Images & Vidéos) */
+        .ids-media {
+            /* S'assure que l'image ne dépasse jamais l'écran mais garde ses proportions */
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain; 
+            display: block;
+        }
+
+        /* 4. Style du Texte (Mode "Annonce") */
+        .ids-text-container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 80%;
+        }
+
+        .ids-text-title {
+            font-size: 4rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+        
+        .ids-text-body {
+            font-size: 2rem;
+            color: #cccccc;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app"></div>
+
+    <script src="js/renderer.js"></script>
+
+    <script>
+        // On instancie le renderer
+        const renderer = new Renderer('app');
+
+        console.log("--- Démarrage Phase 5 : Rendu Visuel ---");
+
+        // Simulation : Ton binôme t'envoie l'ordre d'afficher du TEXTE
+        renderer.render({
+            type: 'TEXT',
+            data: 'Bienvenue sur IDS\nSystème actif'
+        });
+
+        // Simulation : Dans 3 secondes, il t'envoie une IMAGE
+        setTimeout(() => {
+            renderer.render({
+                type: 'IMAGE',
+                // Utilise une image placeholder pour le test
+                data: 'https://placehold.co/1920x1080/222/FFF.png?text=Mode+Passif+(S1)' 
+            });
+        }, 3000);
+
+        // Simulation : Dans 6 secondes, il t'envoie une VIDÉO
+        setTimeout(() => {
+            // Note: Chrome bloque parfois l'autoplay si ce n'est pas "muted"
+            renderer.render({
+                type: 'VIDEO',
+                data: 'https://www.w3schools.com/html/mov_bbb.mp4' 
+            });
+        }, 6000);
+    </script>
+</body>
+</html>
