@@ -159,7 +159,7 @@ Player behavior is predictable on paper.
 
 **Goal:** Pixels appear only after logic is correct.
 
-### Renderer abstraction
+### Renderer abstraction (2/02/2026)
 
 - [ ] Define renderer interface:
   - [ ] renderText
@@ -168,7 +168,7 @@ Player behavior is predictable on paper.
 - [ ] Create dummy renderer (console output)
 - [ ] Ensure renderer never owns logic
 
-### Real rendering
+### Real rendering (3/02/2026 - ?)
 
 - [ ] Decide rendering technology (browser, HTML, canvas, etc.)
 - [ ] Load assets safely

@@ -1,75 +1,127 @@
+/**
+ * IDS — Browser Renderer (Phase 5)
+ * File: player/public/js/renderer.js
+ * * Rôle : Afficher les items dans le navigateur.
+ * Respecte strictement l'interface du DummyRenderer.
+ */
 class Renderer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
-        this.currentTimeout = null;
+        this.timer = null; // Pour stocker le setTimeout et pouvoir l'annuler
+        
+        if (!this.container) {
+            console.error(`FATAL: Conteneur #${containerId} introuvable.`);
+        }
     }
 
+    // Nettoie l'écran et annule le timer en cours (pour éviter les conflits)
     clear() {
-        if (this.container) this.container.innerHTML = '';
-        if (this.currentTimeout) clearTimeout(this.currentTimeout);
+        if (this.container) {
+            this.container.innerHTML = '';
+        }
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
     }
 
     /**
-     * Lit une liste complète d'items (Playlist)
-     * @param {Array} items - La liste issue du JSON (IMAGE, TEXT, VIDEO)
+     * Gère la boucle d'affichage (Logic Mirror of DummyRenderer)
      */
     displayPlaylist(items, index = 0) {
-        if (!items || index >= items.length) {
-            // Optionnel : boucler au début si on veut une lecture infinie en IDLE
-            return this.displayPlaylist(items, 0); 
+        // 1. Gestion de la boucle infinie
+        if (!items || items.length === 0) return;
+
+        if (index >= items.length) {
+            console.log("--- 🔄 Fin de playlist, retour au début ---");
+            return this.displayPlaylist(items, 0);
         }
 
         const item = items[index];
+
+        // 2. On affiche l'item
         this.render(item);
 
-        // --- Logique de gestion du temps demandée ---
-        let duration = 5000; // Par défaut 5 secondes pour IMAGE et TEXT 
+        // 3. Gestion du temps (identique au Dummy)
+        // On utilise la durée du JSON, sinon 5 secondes par défaut
+        const durationMs = (item.durationSec || 5) * 1000;
 
-        if (item.type === 'VIDEO') {
-            // Pour une vidéo, on attend l'événement 'ended' au lieu d'un timer
-            const videoElement = this.container.querySelector('video');
-            if (videoElement) {
-                videoElement.onended = () => this.displayPlaylist(items, index + 1);
-                return; // On sort de la fonction, le callback ended prend le relais
-            }
-        }
+        console.log(`[Renderer] Reste affiché pendant ${durationMs/1000}s...`);
 
-        // Pour IMAGE et TEXT, on passe au suivant après 5s
-        this.currentTimeout = setTimeout(() => {
+        // 4. Programmation de la suite
+        this.timer = setTimeout(() => {
             this.displayPlaylist(items, index + 1);
-        }, duration);
+        }, durationMs);
     }
 
+    /**
+     * Aiguillage vers la bonne méthode d'affichage
+     */
     render(item) {
-        this.clear();
-        console.log(`[Renderer] Affichage de : ${item.type}`);
+        // On nettoie l'écran précédent AVANT d'afficher le nouveau
+        // (Note: on n'appelle pas this.clear() ici car cela tuerait le timer qu'on vient de lancer dans displayPlaylist)
+        if (this.container) this.container.innerHTML = ''; 
 
-        if (item.type === 'TEXT') this._renderText(item.data);
-        else if (item.type === 'IMAGE') this._renderImage(item.data);
-        else if (item.type === 'VIDEO') this._renderVideo(item.data);
+        console.log(`[Renderer] Displaying item #${item.order} (${item.type})`);
+
+        try {
+            switch (item.type) {
+                case 'TEXT':
+                    this._renderText(item.data);
+                    break;
+                case 'IMAGE':
+                    this._renderImage(item.data);
+                    break;
+                case 'VIDEO':
+                    this._renderVideo(item.data);
+                    break;
+                default:
+                    console.warn(`Type inconnu : ${item.type}`);
+                    this._renderText(`Type non supporté : ${item.type}`);
+            }
+        } catch (e) {
+            console.error("Erreur de rendu:", e);
+        }
     }
+
+    // --- IMPLÉMENTATIONS SPÉCIFIQUES (DOM) ---
 
     _renderText(text) {
         const el = document.createElement('h1');
-        el.className = 'ids-text';
-        el.textContent = text;
+        el.className = 'ids-content-text';
+        // Remplace les \n par des sauts de ligne HTML
+        el.innerText = text; 
         this.container.appendChild(el);
     }
 
     _renderImage(url) {
         const img = document.createElement('img');
-        img.className = 'ids-media';
+        img.className = 'ids-content-media';
         img.src = url;
+        
+        img.onerror = () => {
+            console.error(`Impossible de charger l'image : ${url}`);
+            this._renderText("Image indisponible");
+        };
+        
         this.container.appendChild(img);
     }
 
     _renderVideo(url) {
         const vid = document.createElement('video');
-        vid.className = 'ids-media';
+        vid.className = 'ids-content-media';
         vid.src = url;
+        
+        // Configuration indispensable pour l'autoplay moderne
         vid.autoplay = true;
-        vid.muted = true; // Nécessaire pour l'autoplay
-        // Note : pas de "loop" ici car on veut détecter la fin (onended)
+        vid.muted = true; // Obligatoire sur Chrome/Firefox sans interaction utilisateur
+        vid.loop = true;  // On boucle la vidéo tant que le timer de displayPlaylist n'a pas expiré
+        
+        vid.onerror = () => {
+            console.error(`Impossible de charger la vidéo : ${url}`);
+            this._renderText("Vidéo indisponible");
+        };
+
         this.container.appendChild(vid);
     }
 }
