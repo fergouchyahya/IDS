@@ -1,0 +1,35 @@
+  
+{
+"$comment": "/*Plus tard, ce fichier sera la requête json donnée par l'admin */",
+
+  "items": [
+    {
+      "contentId": "img-1",
+      "type": "IMAGE",
+      "data": "assets-demo/images/testImage1.jpg",
+      "durationSec": 5,
+      "order": 1
+    },
+    {
+      "contentId": "vid-1",
+      "type": "VIDEO",
+      "data": "assets-demo/videos/testVideo1.mp4",
+      "durationSec": 15,
+      "order": 2
+    },
+    {
+      "contentId": "img-1",
+      "type": "IMAGE",
+      "data": "assets-demo/images/testImage2.jpg",
+      "durationSec": 5,
+      "order": 3
+    },
+    {
+      "contentId": "img-1",
+      "type": "IMAGE",
+      "data": "assets-demo/images/testImage2.jpg",
+      "durationSec": 5,
+      "order": 3
+    }
+  ]
+}
