@@ -60,7 +60,7 @@ const Ajv2020 = require("ajv/dist/2020");
 const addFormats = require("ajv-formats");
 
 const { createServer } = require("./server");
-
+const DummyRenderer = require("./renderer/DummyRenderer");
 // -------------------------
 // CLI / ENV parsing
 // -------------------------
@@ -316,7 +316,12 @@ function main() {
 
   // Phase 3: start event server if requested
   if (args.serve) {
-    createServer({ port: args.port });
+    const renderer = new DummyRenderer();
+    createServer({ 
+        renderer: renderer, 
+        playlist: playlist, 
+        port: args.port 
+    });
   } else {
     process.exit(0);
   }
