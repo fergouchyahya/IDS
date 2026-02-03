@@ -6,28 +6,21 @@
     {
       "contentId": "img-1",
       "type": "IMAGE",
-      "data": "assets-demo/images/testImage1.jpg",
-      "durationSec": 5,
+      "data": "assets-demo/images/testImage1.png",
+      "durationSec": 1,
       "order": 1
     },
     {
-      "contentId": "vid-1",
+      "contentId": "img-2",
       "type": "IMAGE",
-      "data": "assets-demo/videos/testImage1.jpg",
-      "durationSec": 10,
+      "data": "assets-demo/images/testImage2.png",
+      "durationSec": 1,
       "order": 2
     },
     {
-      "contentId": "img-1",
-      "type": "IMAGE",
-      "data": "assets-demo/images/testImage2.jpg",
-      "durationSec": 5,
-      "order": 3
-    },
-    {
-      "contentId": "img-1",
-      "type": "IMAGE",
-      "data": "assets-demo/images/testImage2.jpg",
+      "contentId": "img-2",
+      "type": "VIDEO",
+      "data": "assets-demo/videos/testVideo2.webm",
       "durationSec": 5,
       "order": 3
     }
