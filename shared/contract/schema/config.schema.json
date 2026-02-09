@@ -31,7 +31,8 @@
         "campaignName",
         "campaignPriority",
         "generatedAt",
-        "items"
+        "items",
+        "showClock"
       ],
       "$comment": "/*\nOne campaign with metadata and a playlist.\n*/",
       "properties": {
@@ -65,7 +66,11 @@
           "items": {
             "$ref": "#/$defs/item"
           }
-        }
+        },
+        "showClock": {
+          "type": "boolean",
+          "$comment": "/*\nWhether to show a clock overlay during this campaign.\n*/"
+      }
       }
     },
     "item": {
@@ -94,8 +99,7 @@
           "enum": [
             "TEXT",
             "IMAGE",
-            "VIDEO",
-            "CLOCK"
+            "VIDEO"
           ],
           "$comment": "/*\nItem type semantics:\n  - TEXT: `data` is the literal text content to display.\n  - IMAGE: `data` is a path or URL pointing to an image.\n  - VIDEO: `data` is a path or URL pointing to a video.\n\nNote: This schema allows both paths and URLs as strings.\nRuntime resolution rules belong to the Player.\n*/"
         },

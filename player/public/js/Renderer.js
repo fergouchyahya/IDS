@@ -87,6 +87,9 @@ class Renderer {
                     console.warn(`Type inconnu : ${item.type}`);
                     this._renderText(`Type non supporté : ${item.type}`);
             }
+            if (item.showClock === true) {
+                this._addOverlayClock(item);
+            }
         } catch (e) {
             console.error("Erreur de rendu:", e);
         }
@@ -115,24 +118,24 @@ class Renderer {
         this.container.appendChild(el);
     }
 
-    _renderClock(item) {
-        // On récupère l'heure actuelle
+    _addOverlayClock(item) {
+        const clockEl = document.createElement('div');
+        clockEl.className = 'ids-overlay-clock';
+
+        // Calcul de l'heure
         const now = new Date();
-        
-        // On la formate HH:MM
         const timeString = now.toLocaleTimeString('fr-FR', { 
             hour: '2-digit', 
             minute: '2-digit' 
         });
+        
+        clockEl.innerText = timeString;
 
-        // On crée un item de texte
-        const textItem = {
-            ...item,          // Copie toutes les propriétés (durée, style, order...)
-            data: timeString  // Remplace "data" par l'heure calculée
-        };
+        if (item.style && item.style.clockColor) {
+            clockEl.style.color = item.style.clockColor;
+        }
 
-        // On délègue l'affichage au moteur de texte existant
-        this._renderText(textItem);
+        this.container.appendChild(clockEl);
     }
 
     _renderImage(url) {
