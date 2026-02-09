@@ -64,6 +64,19 @@ player/scripts/run-dev.sh                       : how to launch player in dev mo
 
 player/src/ (we’ll add actual code files later) : event ingestion, scheduling, rendering, timeout.
 
+player/public                                   : Frontend -> contains the browser-side code that renders content.
+    ├── index.html                  : Main entry point (Kiosk mode, CSS, Loader script).
+    ├── js/Renderer.js              : The rendering engine (Class Renderer).
+    ├── currentPlaylist.json               : Data to simulate Server response (will be replaced by admin request json later).
+    └── assets-demo/                : Local media files (images, videos, fonts) for testing.
+
+    [HOW TO RUN]
+    To test the Rendering without the Node.js backend:
+      1. Open terminal at project root.
+      2. Run a static HTTP server (required for CORS/Fetch):
+         $ npx serve player/public
+      3. Open http://localhost:3000
+
 ## Admin
 admin/openapi/openapi.yaml : API contract for admin endpoints (create campaigns, push configs, etc.)
 
