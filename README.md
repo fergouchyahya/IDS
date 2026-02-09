@@ -9,6 +9,15 @@ Monorepo structure:
 - assets-demo/: demo media for showcasing
 - docs/    : architecture + decisions
 
+# Ground Rules
+- Node version: 20 LTS (keep in sync with CI).
+- Naming conventions: JavaScript/TypeScript use camelCase for vars/functions, PascalCase for classes, UPPER_SNAKE for constants.
+- Naming conventions: files use kebab-case, except class files may be PascalCase (e.g., DummyRenderer.js).
+- Naming conventions: JSON fields use camelCase.
+- File responsibility rules: one responsibility per file; avoid "misc" or "utils" grab-bags.
+- File responsibility rules: if a file grows beyond a single responsibility, split it.
+- File responsibility rules: contract and runtime logic must not be mixed.
+
 # Project explenation 
 ## Root
 README.md     : what the project is, how to navigate, how to run the minimal checks.
@@ -44,6 +53,12 @@ shared/contract/examples/config.welcome.json : simplest valid example; used for 
 
 shared/contract/examples/config.media.json   : example with media assets; covers more fields.
 
+shared/contract/examples/config.invalid.json : intentionally invalid example (not validated by make validate).
+
+### Contract usage (admin + player)
+Admin must only generate configs that validate against the shared schema, and reject uploads that do not.
+Player must validate configs on load and fail fast on invalid data, never attempting to render it.
+
 ## Player
 player/scripts/run-dev.sh                       : how to launch player in dev mode (later: hot reload, local assets).
 
@@ -75,8 +90,6 @@ docs/decisions/0001-record-architecture.md : recorded decision + tradeoffs.
 
 ## CI
 .github/workflows/ci.yml: what the CI enforces (contract validation, later tests/lint).
-
-
 
 
 
