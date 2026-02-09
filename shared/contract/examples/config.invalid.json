@@ -1,0 +1,20 @@
+{
+  "$comment": "Intentionally invalid example for documentation and teaching. Do not validate in CI.",
+  "campaigns": [
+    {
+      "campaignId": "invalid-campaign",
+      "campaignName": "Invalid campaign",
+      "campaignPriority": 1,
+      "generatedAt": "2026-02-01T10:00:00Z",
+      "items": [
+        {
+          "contentId": "bad-item",
+          "type": "TEXT",
+          "data": "This should fail because durationSec is 0",
+          "durationSec": 0,
+          "order": 1
+        }
+      ]
+    }
+  ]
+}
