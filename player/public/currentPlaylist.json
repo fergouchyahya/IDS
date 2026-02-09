@@ -1,0 +1,35 @@
+  
+{
+"$comment": "/*Plus tard, ce fichier sera la requête json donnée par l'admin */",
+
+  "items": [
+    {
+      "contentId": "img-1",
+      "type": "IMAGE",
+      "data": "assets-demo/images/testImage1.png",
+      "durationSec": 1,
+      "order": 2
+    },
+    {
+      "contentId": "img-2",
+      "type": "IMAGE",
+      "data": "assets-demo/images/testImage2.png",
+      "durationSec": 1,
+      "order": 3
+    },
+    {
+      "contentId": "img-2",
+      "type": "VIDEO",
+      "data": "assets-demo/videos/testVideo2.webm",
+      "durationSec": 15,
+      "order": 1
+    },
+    {
+      "contentId": "txt-1",
+      "type": "TEXT",
+      "data": "On affiche du texte hehe, beaucoup beaucoup de texte fnejizvhuzihzhfjehfjds fjz hf zhfzhfhf hfzihfzhfjdfjdsfjsdhfkehf fhjhjkzhfje hfjzhfjzhf hfz hfzjfhz",
+      "durationSec": 5,
+      "order": 4
+    }
+  ]
+}
