@@ -15,8 +15,21 @@
           "data": "Welcome to IDS",
           "durationSec": 10,
           "order": 1
+        },
+        {
+          "contentId": "idle-clock",
+          "type": "CLOCK",
+          "data": "Heure locale",
+          "durationSec": 30,
+          "order": 2,
+          "style": {
+            "color": "#00FF00",
+           "fontSize": "8rem"
+          }
         }
+        
       ]
     }
   ]
 }
+
