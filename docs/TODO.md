@@ -161,19 +161,21 @@ Player behavior is predictable on paper.
 
 ### Renderer abstraction (2/02/2026)
 
-- [ ] Define renderer interface:
-  - [ ] renderText
-  - [ ] renderImage
-  - [ ] renderVideo
-- [ ] Create dummy renderer (console output)
-- [ ] Ensure renderer never owns logic
+- [x] Define renderer interface:
+  - [x] renderText
+  - [x] renderImage
+  - [x] renderVideo
+- [x] Create dummy renderer (console output)
+- [x] Ensure renderer never owns logic
 
-### Real rendering (3/02/2026 - ?)
+### Real rendering (3/02/2026 - 9/02/2026)
 
-- [ ] Decide rendering technology (browser, HTML, canvas, etc.)
-- [ ] Load assets safely
-- [ ] Handle missing assets gracefully
-- [ ] Fullscreen mode
+- [x] Decide rendering technology (browser, HTML, canvas, etc.)
+- [?] Load assets safely
+- [?] Handle missing assets gracefully 
+-> Dans la version actuelle, si un item est manquant/introuvable, un texte est affiché "Image introuvable" etc.
+- [x] Fullscreen mode
+- [x] Renders items in 'order' and not by array position
 
 **Deliverable:**  
 Visual output matches internal state exactly.
