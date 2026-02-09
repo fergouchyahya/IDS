@@ -94,7 +94,8 @@
           "enum": [
             "TEXT",
             "IMAGE",
-            "VIDEO"
+            "VIDEO",
+            "CLOCK"
           ],
           "$comment": "/*\nItem type semantics:\n  - TEXT: `data` is the literal text content to display.\n  - IMAGE: `data` is a path or URL pointing to an image.\n  - VIDEO: `data` is a path or URL pointing to a video.\n\nNote: This schema allows both paths and URLs as strings.\nRuntime resolution rules belong to the Player.\n*/"
         },

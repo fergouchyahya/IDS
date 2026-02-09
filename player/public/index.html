@@ -13,8 +13,8 @@
             display: flex; justify-content: center; align-items: center;
         }
         #app { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        .ids-content-media { max-width: 100%; max-height: 100%; object-fit: contain; }
-        .ids-content-text { font-size: 5rem; text-align: center; }
+        .ids-content-media { width: 100%;  height: 100% ; object-fit: contain;}
+        .ids-content-text { text-align: center; }
         @font-face {
             font-family: 'PoliceParDefaut';
             src: url('assets-demo/fonts/defaultPolice.otf') format('opentype');
@@ -35,7 +35,7 @@
             try {
                 console.log("--- Chargement de la playlist... ---");
                 
-                // On récupère le fichier externe
+                // On récupère le fichier externe (plus tard : la requête json de l'admin)
                 const response = await fetch('currentPlaylist.json');
                 
                 if (!response.ok) throw new Error("Impossible de lire playlist.json");
