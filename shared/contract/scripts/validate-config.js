@@ -91,7 +91,9 @@ function main() {
 
   const validate = ajv.compile(schema);
 
-  const files = fs.readdirSync(examplesDir).filter(f => f.endsWith(".json"));
+  const files = fs
+    .readdirSync(examplesDir)
+    .filter((f) => f.endsWith(".json") && !f.endsWith(".invalid.json"));
   if (files.length === 0) {
     console.error("No example JSON files found in:", examplesDir);
     process.exit(2);
