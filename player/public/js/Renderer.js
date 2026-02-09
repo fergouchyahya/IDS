@@ -26,39 +26,44 @@ class Renderer {
     }
 
     /**
-     * Gère la boucle d'affichage (Logic Mirror of DummyRenderer)
+     * Gère la boucle d'affichage
      */
     displayPlaylist(items, index = 0) {
-        // 1. Gestion de la boucle infinie
+        // Gestion de la boucle infinie
         if (!items || items.length === 0) return;
 
+        //On s'assure que les items sont dans l'ordre spécifié par 'order"
+        if (index === 0) {
+            items.sort((a, b) => a.order - b.order);
+            console.log("[Renderer] Playlist réordonnée :", items);
+        }
+
         if (index >= items.length) {
-            console.log("--- 🔄 Fin de playlist, retour au début ---");
+            console.log("--- Fin de playlist, retour au début ---");
             return this.displayPlaylist(items, 0);
         }
 
         const item = items[index];
 
-        // 2. On affiche l'item
+        // On affiche l'item
         this.render(item);
 
-        // 3. Gestion du temps (identique au Dummy)
+        // Gestion du temps d'affichage
         // On utilise la durée du JSON, sinon 5 secondes par défaut
         const durationMs = (item.durationSec || 5) * 1000;
 
         console.log(`[Renderer] Reste affiché pendant ${durationMs/1000}s...`);
 
-        // 4. Programmation de la suite
         this.timer = setTimeout(() => {
             this.displayPlaylist(items, index + 1);
         }, durationMs);
     }
 
     /**
-     * Aiguillage vers la bonne méthode d'affichage
+     * Dispatch vers la bonne méthode d'affichage
      */
     render(item) {
-        // On nettoie l'écran précédent AVANT d'afficher le nouveau
+        // On nettoie l'écran précédent avant d'afficher le nouveau
         // (Note: on n'appelle pas this.clear() ici car cela tuerait le timer qu'on vient de lancer dans displayPlaylist)
         if (this.container) this.container.innerHTML = ''; 
 
@@ -84,7 +89,7 @@ class Renderer {
         }
     }
 
-    // --- IMPLÉMENTATIONS SPÉCIFIQUES (DOM) ---
+    // --- IMPLÉMENTATIONS SPÉCIFIQUES ---
 
     _renderText(text) {
         const el = document.createElement('h1');
