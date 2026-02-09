@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: IDS Admin API
+  version: 0.1.0
+  description: >
+    Minimal Admin API for uploading and retrieving IDS configs.
+    All configs must validate against the shared contract schema.
+servers:
+  - url: http://localhost:8081
+paths:
+  /configs:
+    post:
+      summary: Upload a config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+      responses:
+        "201":
+          description: Config stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigMeta"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      summary: List configs (metadata only)
+      responses:
+        "200":
+          description: Config list
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  configs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ConfigMeta"
+  /configs/{id}:
+    get:
+      summary: Fetch a config by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Config with metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRecord"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Config:
+      description: >
+        Must validate against the shared contract schema in
+        shared/contract/schema/config.schema.json.
+      $ref: ../../shared/contract/schema/config.schema.json
+    ConfigMeta:
+      type: object
+      additionalProperties: false
+      properties:
+        configId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        checksum:
+          type: string
+      required:
+        - configId
+        - createdAt
+        - checksum
+    ConfigRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        meta:
+          $ref: "#/components/schemas/ConfigMeta"
+        config:
+          $ref: "#/components/schemas/Config"
+      required:
+        - meta
+        - config
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+      required:
+        - error
