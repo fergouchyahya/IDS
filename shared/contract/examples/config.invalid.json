@@ -12,6 +12,7 @@
           "type": "TEXT",
           "data": "This should fail because durationSec is 0",
           "durationSec": 0,
+          "showClock": true,
           "order": 1
         }
       ]

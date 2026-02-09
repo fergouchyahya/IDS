@@ -1,0 +1,28 @@
+{
+  "campaigns": [
+    {
+      "campaignId": "campagne-mixte-demo",
+      "campaignName": "Demo Contenu Mixte",
+      "campaignPriority": 1,
+      "generatedAt": "2026-02-02T10:00:00Z",
+      "items": [
+        {
+          "contentId": "Slide-Bienvenue",
+          "type": "IMAGE",
+          "data": "/assets/images/slide_bienvenue.png",
+          "durationSec": 3,
+          "showClock": true,
+          "order": 1
+          },
+          {
+          "contentId": "Vidéo-NuitInfo",
+          "type": "VIDEO",
+          "data": "/assets/videos/nuit_info.webm",
+          "durationSec": 38,
+          "showClock": true,
+          "order": 1
+          }
+      ]
+    }
+  ]
+}
