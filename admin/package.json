@@ -1,0 +1,14 @@
+{
+  "name": "ids-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IDS admin control plane (minimal API)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}
