@@ -8,13 +8,30 @@
         /* CSS KIOSK MODE */
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #000; overflow: hidden;
+            background: radial-gradient(circle at 20% 20%, #2a2a40 0%, #111 45%, #050505 100%);
+            overflow: hidden;
             font-family: 'PoliceParDefaut'; color: white;
             display: flex; justify-content: center; align-items: center;
         }
         #app { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
         .ids-content-media { width: 100%;  height: 100% ; object-fit: contain;}
-        .ids-content-text { text-align: center; }
+        .ids-content-text {
+            text-align: center;
+            white-space: pre-line;
+            line-height: 1.2;
+            text-shadow: 0 8px 30px rgba(0,0,0,0.65);
+            padding: 2rem 3rem;
+            border-radius: 24px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            backdrop-filter: blur(4px);
+            animation: fadeIn 280ms ease-out;
+            max-width: 82vw;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .ids-overlay-clock {
             position: absolute;
             top: 40px;
@@ -39,34 +56,43 @@
 
     <script>
         const renderer = new Renderer('app');
+        const appEl = document.getElementById('app');
 
-       
-        async function loadAndPlay() {
-            try {
-                console.log("--- Chargement de la playlist... ---");
-                
-                // On récupère le fichier externe (plus tard : la requête json de l'admin)
-                const response = await fetch('currentPlaylist.json');
-                
-                if (!response.ok) throw new Error("Impossible de lire playlist.json");
-                
-                const config = await response.json();
-                
-                console.log("Playlist reçue :", config);
-                
-                // On lance l'affichage
-                renderer.displayPlaylist(config.items);
-
-            } catch (error) {
-                console.error("Erreur critique :", error);
-                // On affiche l'erreur à l'écran pour le debug
-                document.getElementById('app').innerHTML = `<h1 style="color:red">Erreur de chargement<br>${error.message}</h1>`;
-            }
+        function showInfo(text) {
+            appEl.innerHTML = `<h1 style="color:#ddd;text-align:center">${text}</h1>`;
         }
 
-        // Démarrage
-        loadAndPlay();
+        function startRenderStream() {
+            showInfo("En attente d'evenements du Player...");
+            const source = new EventSource('/render-stream');
 
+            source.addEventListener('ready', () => {
+                console.log('[Renderer] stream connected');
+            });
+
+            source.addEventListener('render', (ev) => {
+                try {
+                    const payload = JSON.parse(ev.data);
+                    if (payload && payload.item) {
+                        renderer.render(payload.item);
+                    }
+                } catch (e) {
+                    console.error('render payload invalide', e);
+                }
+            });
+
+            source.addEventListener('clear', () => {
+                renderer.clear();
+                showInfo('Idle - aucun contenu actif');
+            });
+
+            source.onerror = () => {
+                renderer.clear();
+                showInfo("Flux interrompu. Reconnexion...");
+            };
+        }
+
+        startRenderStream();
     </script>
 </body>
 </html>

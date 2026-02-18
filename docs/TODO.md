@@ -179,10 +179,10 @@ Player behavior is predictable on paper.
 
 ### End-to-end wiring (after Admin is ready)
 
-- [ ] Step 1: Admin exposes latest config via `GET /configs` or `GET /configs/{id}`.
-- [ ] Step 2: Player fetches config from Admin at startup (optionally poll for updates).
-- [ ] Step 3: Player emits render events to the browser (WebSocket or SSE).
-- [ ] Step 4: Browser renderer listens and updates DOM with playlist items.
+- [x] Step 1: Admin exposes latest config via `GET /configs` or `GET /configs/{id}`.
+- [x] Step 2: Player fetches config from Admin at startup (optionally poll for updates).
+- [x] Step 3: Player emits render events to the browser (WebSocket or SSE).
+- [x] Step 4: Browser renderer listens and updates DOM with playlist items.
 - [ ] Step 5: Verify in Firefox by uploading a config in Admin and seeing live playback.
 
 **Deliverable:**  

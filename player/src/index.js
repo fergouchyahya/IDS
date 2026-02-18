@@ -69,6 +69,9 @@ const { Scheduler } = require("./scheduler");
 function parseArgs(argv) {
   const args = {
     configPath: process.env.IDS_CONFIG || null,
+    adminUrl: process.env.IDS_ADMIN_URL || null,
+    configId: process.env.IDS_CONFIG_ID || null,
+    guidedFlow: process.env.IDS_GUIDED_FLOW === "1",
     mode: process.env.IDS_MODE || "dev",
     serve: false,
     port: 7070,
@@ -90,8 +93,23 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === "--admin-url" && i + 1 < argv.length) {
+      args.adminUrl = argv[++i];
+      continue;
+    }
+
+    if (a === "--config-id" && i + 1 < argv.length) {
+      args.configId = argv[++i];
+      continue;
+    }
+
     if (a === "--serve") {
       args.serve = true;
+      continue;
+    }
+
+    if (a === "--guided-flow") {
+      args.guidedFlow = true;
       continue;
     }
 
@@ -132,11 +150,14 @@ function printUsage() {
   console.log("");
   console.log("Usage:");
   console.log(
-    "  node player/src/index.js --config <path> [--mode dev|prod] [--serve] [--port <n>] [--inactivity <sec>]"
+    "  node player/src/index.js [--config <path> | --admin-url <url> [--config-id <id>] | --guided-flow] [--mode dev|prod] [--serve] [--port <n>] [--inactivity <sec>]"
   );
   console.log("");
   console.log("Environment:");
   console.log("  IDS_CONFIG=<path>");
+  console.log("  IDS_ADMIN_URL=<http://127.0.0.1:8081>");
+  console.log("  IDS_CONFIG_ID=<configId>");
+  console.log("  IDS_GUIDED_FLOW=1");
   console.log("  IDS_MODE=dev|prod");
   console.log("  IDS_INACTIVITY_SEC=<seconds>");
 }
@@ -167,6 +188,54 @@ function formatAjvErrors(errors) {
       return `- ${where} ${e.message}`;
     })
     .join("\n");
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  const body = await response.text();
+  let parsed;
+  try {
+    parsed = body ? JSON.parse(body) : {};
+  } catch (e) {
+    throw new Error(`Invalid JSON from ${url}`);
+  }
+  if (!response.ok) {
+    const message = parsed && parsed.error ? parsed.error : `HTTP ${response.status}`;
+    throw new Error(`Admin request failed (${url}): ${message}`);
+  }
+  return parsed;
+}
+
+function pickLatestConfigMeta(configs) {
+  if (!Array.isArray(configs) || configs.length === 0) return null;
+  return [...configs].sort((a, b) => {
+    const tA = Date.parse(a.createdAt || 0);
+    const tB = Date.parse(b.createdAt || 0);
+    if (Number.isFinite(tA) && Number.isFinite(tB) && tA !== tB) return tB - tA;
+    return String(b.configId || "").localeCompare(String(a.configId || ""));
+  })[0];
+}
+
+async function loadConfigFromAdmin({ adminUrl, configId }) {
+  const base = String(adminUrl || "").replace(/\/+$/, "");
+  if (!base) throw new Error("Missing admin URL");
+
+  let resolvedId = configId;
+  if (!resolvedId) {
+    const listResponse = await fetchJson(`${base}/configs`);
+    const latest = pickLatestConfigMeta(listResponse.configs);
+    if (!latest || !latest.configId) {
+      throw new Error("Admin has no uploaded configs");
+    }
+    resolvedId = latest.configId;
+  }
+
+  const record = await fetchJson(`${base}/configs/${encodeURIComponent(resolvedId)}`);
+  if (!record || !record.config) {
+    throw new Error(`Admin response for configId=${resolvedId} is missing config payload`);
+  }
+
+  return { config: record.config, sourceLabel: `${base}/configs/${resolvedId}` };
 }
 
 // -------------------------
@@ -263,7 +332,7 @@ function printSummary(campaigns, mode) {
 // Main
 // -------------------------
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
 
   if (args.help) {
@@ -287,8 +356,20 @@ function main() {
     process.exit(2);
   }
 
-  if (!args.configPath) {
-    console.error("Missing config path. Use --config <path> or IDS_CONFIG=<path>.");
+  if (args.guidedFlow) {
+    if (!args.serve) {
+      console.error("Guided flow requires --serve.");
+      process.exit(2);
+    }
+    createServer({
+      port: args.port,
+      guidedFlow: true,
+    });
+    return;
+  }
+
+  if (!args.configPath && !args.adminUrl) {
+    console.error("Missing config source. Use --config <path> or --admin-url <url>.");
     printUsage();
     process.exit(2);
   }
@@ -296,12 +377,6 @@ function main() {
   const mode = args.mode;
   if (mode !== "dev" && mode !== "prod") {
     console.error("Invalid mode. Use --mode dev|prod (or IDS_MODE=dev|prod).");
-    process.exit(2);
-  }
-
-  const configPath = path.resolve(process.cwd(), args.configPath);
-  if (!fs.existsSync(configPath)) {
-    console.error("Config file not found:", configPath);
     process.exit(2);
   }
 
@@ -315,6 +390,7 @@ function main() {
 
   let schema;
   let config;
+  let configSource = null;
 
   try {
     schema = readJsonFile(schemaPath);
@@ -323,12 +399,34 @@ function main() {
     process.exit(2);
   }
 
-  try {
-    config = readJsonFile(configPath);
-  } catch (e) {
-    console.error("Failed to read config JSON:", e.message);
-    process.exit(2);
+  if (args.adminUrl) {
+    try {
+      const loaded = await loadConfigFromAdmin({
+        adminUrl: args.adminUrl,
+        configId: args.configId,
+      });
+      config = loaded.config;
+      configSource = loaded.sourceLabel;
+      console.log(`Loaded config from Admin: ${configSource}`);
+    } catch (e) {
+      console.error("Failed to load config from Admin:", e.message);
+      process.exit(2);
+    }
+  } else {
+    const configPath = path.resolve(process.cwd(), args.configPath);
+    if (!fs.existsSync(configPath)) {
+      console.error("Config file not found:", configPath);
+      process.exit(2);
+    }
+    try {
+      config = readJsonFile(configPath);
+      configSource = configPath;
+    } catch (e) {
+      console.error("Failed to read config JSON:", e.message);
+      process.exit(2);
+    }
   }
+  console.log(`Config source: ${configSource}`);
 
   // Validate
   const validate = buildValidator(schema);
@@ -371,4 +469,7 @@ function main() {
   }
 }
 
-main();
+main().catch((e) => {
+  console.error("Fatal error:", e.message);
+  process.exit(1);
+});
