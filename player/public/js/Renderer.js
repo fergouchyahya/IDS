@@ -97,22 +97,25 @@ class Renderer {
 
     // --- IMPLÉMENTATIONS SELON TYPE DE DOC ---
 
-    _renderText(item) {
+    _renderText(itemOrText) {
+        const payload = typeof itemOrText === 'string'
+            ? { data: itemOrText }
+            : (itemOrText || {});
         const el = document.createElement('h1');
         el.className = 'ids-content-text';
         // Remplace les \n par des sauts de ligne HTML
-        el.innerText = item.data; 
+        el.innerText = payload.data || '';
 
         // si le json impose un style on l'applique
-        if (item.style) {
-            if (item.style.fontFamily) el.style.fontFamily = item.style.fontFamily;
-            if (item.style.color) el.style.color = item.style.color;
+        if (payload.style) {
+            if (payload.style.fontFamily) el.style.fontFamily = payload.style.fontFamily;
+            if (payload.style.color) el.style.color = payload.style.color;
         }
         // Si le JSON impose une taille, on la prend. Sinon, on calcule.
-        if (item.style && item.style.fontSize) {
-            el.style.fontSize = item.style.fontSize;
+        if (payload.style && payload.style.fontSize) {
+            el.style.fontSize = payload.style.fontSize;
         } else {
-            el.style.fontSize = this.calculateAutoFontSize(item.data);
+            el.style.fontSize = this.calculateAutoFontSize(payload.data || '');
         }
 
         this.container.appendChild(el);

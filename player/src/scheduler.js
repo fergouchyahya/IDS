@@ -25,11 +25,20 @@ function sortCampaignsDeterministic(campaigns) {
 }
 
 class Scheduler {
-  constructor({ renderer, campaigns, inactivityMs = DEFAULT_INACTIVITY_MS, onIdleTimeout } = {}) {
+  constructor({
+    renderer,
+    campaigns,
+    inactivityMs = DEFAULT_INACTIVITY_MS,
+    onIdleTimeout,
+    onRender,
+    onClear,
+  } = {}) {
     this.renderer = renderer;
     this.campaigns = Array.isArray(campaigns) ? campaigns : [];
     this.inactivityMs = inactivityMs;
     this.onIdleTimeout = onIdleTimeout;
+    this.onRender = onRender;
+    this.onClear = onClear;
 
     this.currentCampaign = null;
     this.currentIndex = 0;
@@ -122,6 +131,9 @@ class Scheduler {
     if (this.renderer && typeof this.renderer.clear === "function") {
       this.renderer.clear();
     }
+    if (typeof this.onClear === "function") {
+      this.onClear({ reason });
+    }
   }
 
   renderCurrent() {
@@ -134,6 +146,13 @@ class Scheduler {
 
     if (this.renderer && typeof this.renderer.render === "function") {
       this.renderer.render(item);
+    }
+    if (typeof this.onRender === "function") {
+      this.onRender({
+        item,
+        campaignId: this.currentCampaign.campaignId,
+        campaignName: this.currentCampaign.campaignName,
+      });
     }
 
     const durationSec = Number.isFinite(item.durationSec) && item.durationSec > 0
