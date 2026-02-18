@@ -28,11 +28,12 @@ class Renderer {
     /**
      * Gère la boucle d'affichage
      */
-    displayPlaylist(items, index = 0) {
+    displayPlaylist(items, index=0) {
+        
         // Gestion de la boucle infinie
         if (!items || items.length === 0) return;
 
-        //On s'assure que les items sont dans l'ordre spécifié par 'order"
+        // Au premier passage, on s'assure que les items sont dans l'ordre spécifié par 'order"
         if (index === 0) {
             items.sort((a, b) => a.order - b.order);
             console.log("[Renderer] Playlist réordonnée :", items);
@@ -40,7 +41,7 @@ class Renderer {
 
         if (index >= items.length) {
             console.log("--- Fin de playlist, retour au début ---");
-            return this.displayPlaylist(items, 0);
+            return this.displayPlaylist(items, 0); // on relance depuis le début
         }
 
         const item = items[index];
@@ -48,8 +49,7 @@ class Renderer {
         // On affiche l'item
         this.render(item);
 
-        // Gestion du temps d'affichage
-        // On utilise la durée du JSON, sinon 5 secondes par défaut
+        // Gestion du temps d'affichage, on utilise la durée du JSON, sinon 5 secondes par défaut
         const durationMs = (item.durationSec || 5) * 1000;
 
         console.log(`[Renderer] Reste affiché pendant ${durationMs/1000}s...`);
@@ -72,7 +72,10 @@ class Renderer {
         try {
             switch (item.type) {
                 case 'TEXT':
-                    this._renderText(item.data);
+                    this._renderText(item);
+                    break;
+                case 'CLOCK':
+                    this._renderClock(item);
                     break;
                 case 'IMAGE':
                     this._renderImage(item.data);
@@ -84,19 +87,55 @@ class Renderer {
                     console.warn(`Type inconnu : ${item.type}`);
                     this._renderText(`Type non supporté : ${item.type}`);
             }
+            if (item.showClock === true) {
+                this._addOverlayClock(item);
+            }
         } catch (e) {
             console.error("Erreur de rendu:", e);
         }
     }
 
-    // --- IMPLÉMENTATIONS SPÉCIFIQUES ---
+    // --- IMPLÉMENTATIONS SELON TYPE DE DOC ---
 
-    _renderText(text) {
+    _renderText(item) {
         const el = document.createElement('h1');
         el.className = 'ids-content-text';
         // Remplace les \n par des sauts de ligne HTML
-        el.innerText = text; 
+        el.innerText = item.data; 
+
+        // si le json impose un style on l'applique
+        if (item.style) {
+            if (item.style.fontFamily) el.style.fontFamily = item.style.fontFamily;
+            if (item.style.color) el.style.color = item.style.color;
+        }
+        // Si le JSON impose une taille, on la prend. Sinon, on calcule.
+        if (item.style && item.style.fontSize) {
+            el.style.fontSize = item.style.fontSize;
+        } else {
+            el.style.fontSize = this.calculateAutoFontSize(item.data);
+        }
+
         this.container.appendChild(el);
+    }
+
+    _addOverlayClock(item) {
+        const clockEl = document.createElement('div');
+        clockEl.className = 'ids-overlay-clock';
+
+        // Calcul de l'heure
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('fr-FR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        
+        clockEl.innerText = timeString;
+
+        if (item.style && item.style.clockColor) {
+            clockEl.style.color = item.style.clockColor;
+        }
+
+        this.container.appendChild(clockEl);
     }
 
     _renderImage(url) {
@@ -117,7 +156,6 @@ class Renderer {
         vid.className = 'ids-content-media';
         vid.src = url;
         
-        // Configuration indispensable pour l'autoplay moderne
         vid.autoplay = true;
         vid.muted = true; // Obligatoire sur Chrome/Firefox sans interaction utilisateur
         vid.loop = true;  // On boucle la vidéo tant que le timer de displayPlaylist n'a pas expiré
@@ -128,5 +166,25 @@ class Renderer {
         };
 
         this.container.appendChild(vid);
+    }
+
+
+    calculateAutoFontSize(text) {
+        if (!text) return "5rem";
+
+        const len = text.length;
+
+        // ÉCHELLE DE TAILLES (Ajustable selon tes goûts)
+        if (len <= 5) {
+            return "25rem"; // Très court (ex: "14:00" ou "NON") -> GIGANTESQUE
+        } else if (len <= 10) {
+            return "15rem"; // Court (ex: "Bienvenue") -> TRÈS GROS
+        } else if (len <= 30) {
+            return "8rem";  // Moyen (ex: "Réunion en salle B") -> GROS
+        } else if (len <= 60) {
+            return "5rem";  // Long (ex: une phrase complète) -> MOYEN
+        } else {
+            return "3rem";  // Paragraphe -> PETIT
+        }
     }
 }
