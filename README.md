@@ -69,17 +69,14 @@ player/public                                   : Frontend -> contains the brows
     ├── index.html                  : Main entry point (Kiosk mode, CSS, Loader script).
     
     ├── js/Renderer.js              : The rendering engine (Class Renderer).
-    
-    ├── currentPlaylist.json        : Data to simulate Server response (will be replaced by admin request json later).
-    
+
     └── assets-demo/                : Local media files (images, videos, fonts) for testing.
 
     [HOW TO RUN]
-    To test the Rendering without the Node.js backend:
-      1. Open terminal at project root.
-      2. Run a static HTTP server (required for CORS/Fetch):
-         $ npx serve player/public
-      3. Open http://localhost:3000
+    Start the player server and open:
+      1. `bash player/scripts/run-serve.sh`
+      2. Open `http://127.0.0.1:7070/`
+      3. Inject events via `POST /events`
 
 ## Admin
 admin/openapi/openapi.yaml : API contract for admin endpoints (create campaigns, push configs, etc.)
@@ -107,7 +104,6 @@ docs/decisions/0001-record-architecture.md : recorded decision + tradeoffs.
 
 ## CI
 .github/workflows/ci.yml: what the CI enforces (contract validation, later tests/lint).
-
 
 
 
