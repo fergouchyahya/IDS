@@ -1,0 +1,20 @@
+{
+  "campaigns": [
+    {
+      "campaignId": "campagne-Engaged",
+      "campaignName": "Demo Contenu Mixte",
+      "campaignPriority": 1,
+      "generatedAt": "2026-02-02T10:00:00Z",
+      "items": [
+        {
+          "contentId": "Vidéo-Engaged",
+          "type": "VIDEO",
+          "data": "/assets-demo/videos/VideoEngaged.webm",
+          "durationSec": 3,
+          "showClock": true,
+          "order": 1
+          }
+      ]
+    }
+  ]
+}

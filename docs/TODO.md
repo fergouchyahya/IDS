@@ -177,6 +177,14 @@ Player behavior is predictable on paper.
 - [x] Fullscreen mode
 - [x] Renders items in 'order' and not by array position
 
+### End-to-end wiring (after Admin is ready)
+
+- [ ] Step 1: Admin exposes latest config via `GET /configs` or `GET /configs/{id}`.
+- [ ] Step 2: Player fetches config from Admin at startup (optionally poll for updates).
+- [ ] Step 3: Player emits render events to the browser (WebSocket or SSE).
+- [ ] Step 4: Browser renderer listens and updates DOM with playlist items.
+- [ ] Step 5: Verify in Firefox by uploading a config in Admin and seeing live playback.
+
 **Deliverable:**  
 Visual output matches internal state exactly.
 
@@ -186,13 +194,52 @@ Visual output matches internal state exactly.
 
 **Goal:** Admin produces configs that always validate.
 
-- [ ] Define admin responsibilities explicitly
-- [ ] Write OpenAPI contract first
-- [ ] Implement minimal API:
-  - [ ] upload config
-  - [ ] list configs
-- [ ] Validate configs on upload
-- [ ] Store configs immutably
+- [ ] Define admin responsibilities explicitly (what Admin does and does NOT do)
+  - Why: prevents scope creep and keeps Admin focused on producing valid configs for the Player.
+  - Do:
+    - Accept config uploads.
+    - Validate against shared schema.
+    - Store immutable versions and metadata.
+    - Provide list/read endpoints for Player or operators.
+  - Do NOT:
+    - Render content or run player logic.
+    - Rewrite configs silently.
+    - Depend on player internals beyond the shared contract.
+
+- [ ] Write OpenAPI contract first (v0 admin API)
+  - Why: API contract is the handshake between Admin UI/clients and the backend.
+  - Include endpoints:
+    - `POST /configs` upload a config JSON.
+    - `GET /configs` list configs (metadata only).
+    - `GET /configs/{id}` fetch a specific config (full JSON).
+  - Include response/error shapes:
+    - 201 on upload success with `configId`.
+    - 400 on validation errors with readable error list.
+    - 404 when a configId does not exist.
+  - Include schemas:
+    - Config payload references shared schema.
+    - Metadata object (id, name, createdAt, checksum).
+
+- [ ] Implement minimal API (no UI yet)
+  - Why: start with a reliable backend that enforces the contract.
+  - Implement routes:
+    - Upload (validate, store, return id).
+    - List (metadata only).
+    - Get by id (full config).
+  - Implement consistent error responses.
+
+- [ ] Validate configs on upload (use shared schema)
+  - Why: Admin must reject invalid configs before they reach the Player.
+  - Use the same AJV validator as in `shared/contract/scripts/validate-config.js`.
+  - Return clear, human-readable validation errors in the response.
+
+- [ ] Store configs immutably (append-only)
+  - Why: ensures reproducibility and audit trail.
+  - Store each upload as a new version with:
+    - `configId` (uuid or hash).
+    - `createdAt` timestamp.
+    - Original JSON (no mutation).
+  - Optional: store checksum for integrity and dedupe.
 
 **Deliverable:**  
 Admin cannot generate invalid data.

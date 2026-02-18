@@ -25,6 +25,8 @@ build/
 # Logs
 *.log
 
+admin/data/
+
 *.mp4
 *.png
 *.jpg

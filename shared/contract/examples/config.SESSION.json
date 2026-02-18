@@ -1,0 +1,19 @@
+{
+  "campaigns": [
+    {
+      "campaignId": "campagne-Session",
+      "campaignName": "Demo Contenu Session",
+      "campaignPriority": 1,
+      "generatedAt": "2026-02-02T10:00:00Z",
+      "items": [
+        {
+          "contentId": "Exemple EDT",
+          "type": "IMAGE",
+          "data": "/assets-demo/images/slide_EDT_exemple.png",
+          "durationSec": 3,
+          "order": 1
+          }
+      ]
+    }
+  ]
+}
