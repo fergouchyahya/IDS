@@ -65,6 +65,10 @@
           "items": {
             "$ref": "#/$defs/item"
           }
+        },
+        "showClock": {
+          "type": "boolean",
+          "$comment": "/*\nWhether to show a clock overlay during this campaign.\n*/"
         }
       }
     },
@@ -112,6 +116,33 @@
           "type": "integer",
           "minimum": 1,
           "$comment": "/*\nExplicit playlist order. The Player sorts items by ascending `order`.\nDecision locked: ordering is NOT by array position.\n*/"
+        },
+        "showClock": {
+          "type": "boolean",
+          "$comment": "/*\nIf true, displays a clock overlay on top of this item.\n*/"
+        },
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "$comment": "/*\nOptional styling overrides for Text or Clock.\n*/",
+          "properties": {
+            "fontSize": {
+              "type": "string",
+              "description": "CSS font-size (e.g. '5rem')"
+            },
+            "fontFamily": {
+              "type": "string",
+              "description": "Font family name"
+            },
+            "color": {
+              "type": "string",
+              "description": "CSS color (hex, name)"
+            },
+            "clockColor": {
+              "type": "string",
+              "description": "Specific color for the clock overlay"
+            }
+          }
         }
       }
     }
