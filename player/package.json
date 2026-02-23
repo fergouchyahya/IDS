@@ -2,6 +2,7 @@
     "name": "@ids/player",
     "version": "0.1.0",
     "private": true,
+    "description": "IDS player runtime: config loading, event handling, scheduling, and render streaming.",
     "type": "commonjs",
     "scripts": {
         "start": "node src/index.js"

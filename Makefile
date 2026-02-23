@@ -1,3 +1,7 @@
+# IDS Makefile
+# Purpose: centralize repeatable project commands.
+# Fit: one canonical entrypoint for validation in local dev and CI.
+
 .PHONY: help validate
 
 help:

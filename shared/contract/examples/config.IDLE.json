@@ -1,4 +1,5 @@
 {
+  "$comment": "IDS example config for IDLE loop content playback.",
   "campaigns": [
     {
       "campaignId": "campagne-Idle",

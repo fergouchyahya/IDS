@@ -1,3 +1,7 @@
+# IDS Project EditorConfig
+# This file defines formatting defaults for all text files in the repository.
+# It keeps diffs stable and prevents editor-specific formatting drift.
+
 root = true
 
 [*]

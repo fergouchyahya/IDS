@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# IDS Guided Flow Script
+# Purpose: launch guided demo mode and optionally auto-inject events.
+# Fit: scripted demo of the 3-step visitor interaction UX.
+
 set -euo pipefail
 
 PORT="${PORT:-7070}"

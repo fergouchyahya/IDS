@@ -1,3 +1,7 @@
+# IDS Local Infra Compose
+# Purpose: bring up lightweight local edge infrastructure.
+# Fit: exposes the HTTP edge (Nginx) used to front app services.
+
 services:
   nginx:
     image: nginx:alpine

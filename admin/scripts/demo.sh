@@ -1,4 +1,8 @@
 #!/usr/bin/env sh
+# IDS Admin Demo Script
+# Purpose: boot Admin locally and exercise core endpoints with sample config upload.
+# Fit: quick confidence check for upload/list/read API flow.
+
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"

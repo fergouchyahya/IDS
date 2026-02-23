@@ -1,3 +1,7 @@
+; IDS systemd unit
+; Purpose: manage IDS runtime process lifecycle on Raspberry Pi.
+; Fit: ensures auto-start and restart behavior for unattended operation.
+
 [Unit]
 Description=IDS Player (placeholder)
 After=network.target
