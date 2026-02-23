@@ -1,4 +1,5 @@
 {
+  "$comment": "IDS example config for SESSION-specific screen content.",
   "campaigns": [
     {
       "campaignId": "campagne-Session",

@@ -1,3 +1,7 @@
+# IDS Admin OpenAPI Contract
+# Purpose: declare the Admin HTTP API behavior and data shapes.
+# Fit: contract-first boundary between Admin backend and its clients (Player/operators/UI).
+
 openapi: 3.0.3
 info:
   title: IDS Admin API
