@@ -1,3 +1,7 @@
+# IDS CI Workflow
+# Purpose: run baseline contract validation on push/PR.
+# Fit: protects Admin/Player compatibility by validating shared schema examples.
+
 name: ci
 
 on:
@@ -14,8 +18,6 @@ jobs:
           node-version: '20'
       - name: Install contract deps
         working-directory: shared/contract
-        run: |
-          npm init -y
-          npm i ajv@^8 ajv-formats@^3
+        run: npm ci
       - name: Validate examples
         run: make validate

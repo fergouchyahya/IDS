@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# IDS Player Serve Script
+# Purpose: run Player HTTP server (event ingestion + UI + render stream).
+# Fit: primary local entrypoint for end-to-end interaction testing.
+
 set -euo pipefail
 
 CONFIG="${1:-shared/contract/examples/config.welcome.json}"
