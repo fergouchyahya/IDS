@@ -1,12 +1,10 @@
-# IDS Makefile
-# Purpose: centralize repeatable project commands.
-# Fit: one canonical entrypoint for validation in local dev and CI.
-
-.PHONY: help validate
-
-help:
-	@echo "Targets:"
-	@echo "  validate  - validate JSON configs (shared/contract)"
+.PHONY: validate run-admin run-player
 
 validate:
 	node shared/contract/scripts/validate-config.js
+
+run-admin:
+	node admin/src/index.js
+
+run-player:
+	node player/src/index.js --config shared/contract/examples/config.welcome.json
