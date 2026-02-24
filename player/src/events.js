@@ -13,10 +13,11 @@
  *   - IDLE: explicit "go back to idle mode"
  *   - VISION_PRESENT: presence detected (payload may include timestamp)
  *   - NFC_TAP: NFC badge tap (payload includes studentId)
+ *   - CONNECT: explicit choice for "connect" branch
  *
  * EVENT SHAPE (canonical)
  *   {
- *     "type": "NFC_TAP" | "VISION_PRESENT" | "IDLE",
+ *     "type": "NFC_TAP" | "VISION_PRESENT" | "IDLE" | "CONNECT",
  *     "timestamp": "2026-02-01T10:00:00Z",
  *     "studentId": "optional string"
  *   }
@@ -30,6 +31,7 @@ const EVENT_TYPES = Object.freeze({
   IDLE: "IDLE",
   VISION_PRESENT: "VISION_PRESENT",
   NFC_TAP: "NFC_TAP",
+  CONNECT: "CONNECT",
 });
 
 function isIsoDateTimeString(s) {
