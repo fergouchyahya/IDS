@@ -87,12 +87,12 @@ function serveStatic(reqPath, res) {
   return null;
 }
 
-function createGuidedItem(text) {
+function createGuidedTextItem(contentId, text, durationSec = 9999) {
   return {
-    contentId: "guided-flow-item",
+    contentId,
     type: "TEXT",
     data: text,
-    durationSec: 9999,
+    durationSec,
     order: 1,
   };
 }
@@ -100,7 +100,30 @@ function createGuidedItem(text) {
 function createServer({ scheduler, port = 7070, guidedFlow = false } = {}) {
   let state = STATES.IDLE;
   const streamClients = new Set();
-  let currentView = guidedFlow ? createGuidedItem("Hello") : null;
+  let currentView = null;
+
+  const guidedIdleItems = [
+    createGuidedTextItem("idle-1", "IDLE 1\nScreen saver slide 1", 3),
+    createGuidedTextItem("idle-2", "IDLE 2\nScreen saver slide 2", 3),
+    createGuidedTextItem("idle-3", "IDLE 3\nScreen saver slide 3", 3),
+    createGuidedTextItem("idle-4", "IDLE 4\nScreen saver slide 4", 3),
+  ];
+  const guidedChoiceItem = createGuidedTextItem(
+    "choice-connect-or-visitor",
+    "CHOICE\nVisitor (NFC_TAP) or Connect (CONNECT)"
+  );
+  const guidedVisitorItem = createGuidedTextItem(
+    "visitor-selected",
+    "VISITOR SELECTED\nNFC_TAP received"
+  );
+  const guidedConnectItem = createGuidedTextItem(
+    "connect-selected",
+    "CONNECT SELECTED\nCONNECT event received"
+  );
+  const guidedReturnToIdleMs = 10_000;
+  let guidedIdleIndex = 0;
+  let guidedIdleTimer = null;
+  let guidedReturnTimer = null;
 
   function broadcast(event, payload) {
     const data = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -109,10 +132,64 @@ function createServer({ scheduler, port = 7070, guidedFlow = false } = {}) {
     }
   }
 
-  function renderGuidedText(text) {
-    const item = createGuidedItem(text);
+  function renderGuidedItem(item) {
     currentView = item;
     broadcast("render", { item, campaignId: "guided-flow", campaignName: "GuidedFlow" });
+  }
+
+  function stopGuidedIdleLoop() {
+    if (guidedIdleTimer) {
+      clearTimeout(guidedIdleTimer);
+      guidedIdleTimer = null;
+    }
+  }
+
+  function clearGuidedReturnTimer() {
+    if (guidedReturnTimer) {
+      clearTimeout(guidedReturnTimer);
+      guidedReturnTimer = null;
+    }
+  }
+
+  function startGuidedIdleLoop() {
+    clearGuidedReturnTimer();
+    stopGuidedIdleLoop();
+    guidedIdleIndex = 0;
+
+    const loop = () => {
+      const item = guidedIdleItems[guidedIdleIndex % guidedIdleItems.length];
+      guidedIdleIndex += 1;
+      renderGuidedItem(item);
+      guidedIdleTimer = setTimeout(loop, item.durationSec * 1000);
+    };
+
+    loop();
+  }
+
+  function scheduleGuidedReturnToIdle() {
+    clearGuidedReturnTimer();
+    guidedReturnTimer = setTimeout(() => {
+      const prev = state;
+      try {
+        const t = transition(state, "IDLE");
+        state = t.nextState;
+        console.log("=== STATE TRANSITION ===");
+        if (t.changed) {
+          console.log(`state: ${prev} -> ${state} (guided timeout)`);
+        } else {
+          console.log(`state: ${prev} (no change)`);
+        }
+      } catch (e) {
+        console.log("=== STATE ERROR ===");
+        console.log(e.message);
+      }
+      startGuidedIdleLoop();
+    }, guidedReturnToIdleMs);
+  }
+
+  if (guidedFlow) {
+    currentView = createGuidedTextItem("loading", "Loading guided flow...");
+    startGuidedIdleLoop();
   }
 
   if (scheduler) {
@@ -180,6 +257,10 @@ function createServer({ scheduler, port = 7070, guidedFlow = false } = {}) {
             type: "VISION_PRESENT",
             timestamp: "2026-02-18T10:00:00Z",
           },
+          connectExample: {
+            type: "CONNECT",
+            timestamp: "2026-02-18T10:00:10Z",
+          },
         },
       });
     }
@@ -216,13 +297,18 @@ function createServer({ scheduler, port = 7070, guidedFlow = false } = {}) {
         }
 
         if (guidedFlow) {
+          stopGuidedIdleLoop();
           if (event.type === "IDLE") {
-            renderGuidedText("Hello");
+            startGuidedIdleLoop();
           } else if (event.type === "VISION_PRESENT") {
-            renderGuidedText("Visitor\nTap to connect");
+            clearGuidedReturnTimer();
+            renderGuidedItem(guidedChoiceItem);
           } else if (event.type === "NFC_TAP") {
-            const safeName = String(event.studentId || "").trim() || "Visitor";
-            renderGuidedText(`Hello ${safeName}`);
+            renderGuidedItem(guidedVisitorItem);
+            scheduleGuidedReturnToIdle();
+          } else if (event.type === "CONNECT") {
+            renderGuidedItem(guidedConnectItem);
+            scheduleGuidedReturnToIdle();
           }
         } else if (scheduler) {
           scheduler.handleEvent(event.type);

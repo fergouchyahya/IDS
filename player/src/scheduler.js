@@ -107,8 +107,8 @@ class Scheduler {
       return;
     }
 
-    if (eventType === "NFC_TAP") {
-      this.startCampaign(selected, "restart on NFC_TAP");
+    if (eventType === "NFC_TAP" || eventType === "CONNECT") {
+      this.startCampaign(selected, `restart on ${eventType}`);
     }
   }
 
