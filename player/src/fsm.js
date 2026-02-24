@@ -21,9 +21,13 @@
  *       Interactive -> Interactive
  *       PlayingCampaign -> PlayingCampaign
  *   - NFC_TAP:
- *       Idle -> PlayingCampaign
+ *       Idle -> Illegal (must detect movement first)
  *       Interactive -> PlayingCampaign
  *       PlayingCampaign -> PlayingCampaign (ignore; we don't restart yet)
+ *   - CONNECT:
+ *       Idle -> Illegal (must detect movement first)
+ *       Interactive -> PlayingCampaign
+ *       PlayingCampaign -> PlayingCampaign
  *
  * OUTPUT
  *   transition(currentState, eventType) -> { nextState, changed }
@@ -52,7 +56,17 @@ function transition(currentState, eventType) {
   }
 
   if (eventType === "NFC_TAP") {
-    if (currentState === STATES.IDLE) return { nextState: STATES.PLAYING, changed: true };
+    if (currentState === STATES.IDLE) {
+      throw new Error("Illegal transition: state=Idle event=NFC_TAP (movement required first)");
+    }
+    if (currentState === STATES.INTERACTIVE) return { nextState: STATES.PLAYING, changed: true };
+    if (currentState === STATES.PLAYING) return { nextState: STATES.PLAYING, changed: false };
+  }
+
+  if (eventType === "CONNECT") {
+    if (currentState === STATES.IDLE) {
+      throw new Error("Illegal transition: state=Idle event=CONNECT (movement required first)");
+    }
     if (currentState === STATES.INTERACTIVE) return { nextState: STATES.PLAYING, changed: true };
     if (currentState === STATES.PLAYING) return { nextState: STATES.PLAYING, changed: false };
   }

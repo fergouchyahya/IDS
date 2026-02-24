@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # IDS Guided Flow Script
 # Purpose: launch guided demo mode and optionally auto-inject events.
-# Fit: scripted demo of the 3-step visitor interaction UX.
+# Fit: scripted demo of the guided text flow.
 
 set -euo pipefail
 
 PORT="${PORT:-7070}"
 NAME="${1:-Visitor}"
 AUTO="${AUTO:-1}"
+CHOICE="${CHOICE:-visitor}"
 
 node player/src/index.js --guided-flow --serve --port "$PORT" &
 PLAYER_PID=$!
@@ -19,7 +20,8 @@ trap cleanup EXIT INT TERM
 
 sleep 1
 echo "Guided flow running at: http://127.0.0.1:${PORT}/"
-echo "Initial page: Hello"
+echo "Initial page: IDLE text loop (IDLE 1 -> IDLE 4)"
+echo "Choice mode: ${CHOICE}"
 
 if [[ "$AUTO" == "1" ]]; then
   echo "Sending motion event..."
@@ -29,10 +31,17 @@ if [[ "$AUTO" == "1" ]]; then
 
   sleep 2
 
-  echo "Sending tap event for name: ${NAME}"
-  curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
-    -H "content-type: application/json" \
-    -d "{\"type\":\"NFC_TAP\",\"studentId\":\"${NAME}\",\"timestamp\":\"2026-02-18T10:00:10Z\"}" >/dev/null
+  if [[ "$CHOICE" == "connect" ]]; then
+    echo "Sending connect choice event..."
+    curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
+      -H "content-type: application/json" \
+      -d '{"type":"CONNECT","timestamp":"2026-02-18T10:00:10Z"}' >/dev/null
+  else
+    echo "Sending visitor tap event for name: ${NAME}"
+    curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
+      -H "content-type: application/json" \
+      -d "{\"type\":\"NFC_TAP\",\"studentId\":\"${NAME}\",\"timestamp\":\"2026-02-18T10:00:10Z\"}" >/dev/null
+  fi
 fi
 
 echo "Press Ctrl+C to stop."
