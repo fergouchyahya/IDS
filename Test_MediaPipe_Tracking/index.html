@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaPipe - Détection de swipe</title>
+    <style>
+        body { font-family: Arial; text-align: center; background: #111; color: white; margin: 0; padding: 20px; }
+        video { display: none; } /* On cache la vraie vidéo */
+        canvas { border: 3px solid #555; border-radius: 8px; max-width: 100%; background: #000; }
+        #status { font-size: 1.5rem; font-weight: bold; margin: 15px 0; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+    <h1>Détection Mouvement</h1>
+    <div id="status">Chargement de MediaPipe Pose Lite...</div>
+    
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas" width="640" height="480"></canvas>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
