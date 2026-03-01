@@ -2,7 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { PlayerStateMachine, normalizeRuntimeConfig } = require('../src/server');
+const {
+  PlayerStateMachine,
+  normalizeRuntimeConfig,
+  renderUI,
+  isMovementInputEvent,
+  isDetectorAllowedEvent,
+} = require('../src/server');
 
 function loadConfig() {
   const p = path.resolve(__dirname, '../../shared/contract/examples/config.welcome.json');
@@ -101,4 +107,54 @@ test('runtime config refresh does not extend inactivity timeout', async () => {
   await wait(110);
   assert.equal(sm.getStatus().state, 'IDLE');
   sm.stop();
+});
+
+test('renderUI menu includes both visitor and nfc decision cards', () => {
+  const sm = new PlayerStateMachine(loadConfig());
+  sm.handleEvent({ type: 'movement_detected' });
+  const html = renderUI(sm);
+
+  assert.match(html, /Continue as visitor/);
+  assert.match(html, /Tap NFC card/);
+  sm.stop();
+});
+
+test('renderUI debug panel is hidden by default and visible with forced debug', () => {
+  const sm = new PlayerStateMachine(loadConfig());
+  const normal = renderUI(sm);
+  const forced = renderUI(sm, { forceDebug: true });
+
+  assert.match(normal, /class="debug-panel"/);
+  assert.doesNotMatch(normal, /class="debug-panel visible"/);
+  assert.match(forced, /class="debug-panel visible"/);
+  sm.stop();
+});
+
+test('renderUI includes state marker classes for idle, menu, and info states', () => {
+  const sm = new PlayerStateMachine(loadConfig());
+  assert.match(renderUI(sm), /class="player-body state-idle"/);
+
+  sm.handleEvent({ type: 'movement_detected' });
+  assert.match(renderUI(sm), /class="player-body state-menu"/);
+
+  sm.handleEvent({ type: 'visitor_selected' });
+  assert.match(renderUI(sm), /class="player-body state-info"/);
+  sm.stop();
+});
+
+test('movement event gate allows only non-movement events via generic endpoint', () => {
+  assert.equal(isMovementInputEvent({ type: 'movement_detected' }), true);
+  assert.equal(isMovementInputEvent({ type: 'movement' }), true);
+  assert.equal(isMovementInputEvent({ type: 'vision_present' }), true);
+  assert.equal(isMovementInputEvent({ type: 'visitor_selected' }), false);
+  assert.equal(isMovementInputEvent({ type: 'scroll_next' }), false);
+});
+
+test('detector endpoint allows only gesture-related runtime events', () => {
+  assert.equal(isDetectorAllowedEvent('movement_detected'), true);
+  assert.equal(isDetectorAllowedEvent('visitor_selected'), true);
+  assert.equal(isDetectorAllowedEvent('scroll_next'), true);
+  assert.equal(isDetectorAllowedEvent('scroll_prev'), true);
+  assert.equal(isDetectorAllowedEvent('nfc_tap'), false);
+  assert.equal(isDetectorAllowedEvent('runtime_config'), false);
 });

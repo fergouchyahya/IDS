@@ -3,6 +3,8 @@ let selectedCampaignId = null;
 let selectedBlockIndex = null;
 let sidebarQuery = "";
 let dragSourceIndex = null;
+let overviewTypeFilter = "all";
+let overviewStatusFilter = "all";
 
 const builder = {
   type: "idle",
@@ -99,77 +101,246 @@ function getCampaignsByType(type) {
   return [];
 }
 
-/* ===== SIDEBAR RENDERING ===== */
-function renderSidebar() {
-  const sidebarContent = document.getElementById("sidebarContent");
-  if (!sidebarContent) return;
-  if (!state) {
-    sidebarContent.innerHTML = '<div style="padding: 16px; color: var(--text-tertiary); font-size: 12px;">Loading campaigns...</div>';
-    return;
+function toRelativeTime(isoString) {
+  const value = String(isoString || "").trim();
+  if (!value) return "Unknown";
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return "Unknown";
+
+  const delta = Date.now() - ts;
+  const minutes = Math.floor(delta / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 8) return `${days}d ago`;
+
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function normalizeCampaignCards() {
+  if (!state) return [];
+
+  const cards = [];
+
+  for (const campaign of state.idleCampaigns || []) {
+    cards.push({
+      kind: "idle",
+      id: campaign.campaignId,
+      name: campaign.campaignName || "Untitled idle campaign",
+      status: campaign.campaignId === state.active?.idleCampaignId ? "live" : "draft",
+      items: Array.isArray(campaign.items) ? campaign.items : [],
+      updatedAt: campaign.updatedAt || campaign.generatedAt || state.updatedAt || "",
+      subtitle: campaign.campaignId || "",
+    });
   }
 
-  const groupNames = {
+  for (const campaign of state.visitorCampaigns || []) {
+    cards.push({
+      kind: "visitor",
+      id: campaign.campaignId,
+      name: campaign.campaignName || "Untitled visitor campaign",
+      status: campaign.campaignId === state.active?.visitorCampaignId ? "live" : "draft",
+      items: Array.isArray(campaign.items) ? campaign.items : [],
+      updatedAt: campaign.updatedAt || campaign.generatedAt || state.updatedAt || "",
+      subtitle: campaign.campaignId || "",
+    });
+  }
+
+  for (const student of state.students || []) {
+    cards.push({
+      kind: "student",
+      id: student.nfcUid,
+      name: student.name || "Unnamed student profile",
+      status: "live",
+      items: Array.isArray(student.campaign?.items) ? student.campaign.items : [],
+      updatedAt: student.updatedAt || student.campaign?.updatedAt || state.updatedAt || "",
+      subtitle: `UID: ${student.nfcUid || "n/a"}`,
+    });
+  }
+
+  if (state.menuCampaign) {
+    cards.push({
+      kind: "menu",
+      id: state.menuCampaign.campaignId || "menu-default",
+      name: state.menuCampaign.campaignName || "Menu",
+      status: "live",
+      items: Array.isArray(state.menuCampaign.items) ? state.menuCampaign.items : [],
+      updatedAt: state.menuCampaign.updatedAt || state.updatedAt || "",
+      subtitle: state.menuCampaign.campaignId || "menu-default",
+    });
+  }
+
+  return cards.sort((a, b) => {
+    if (a.status !== b.status) return a.status === "live" ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name));
+  });
+}
+
+function cardTypeLabel(kind) {
+  return {
     idle: "Idle",
     visitor: "Visitor",
     student: "Student",
     menu: "Menu",
-  };
+  }[kind] || "Campaign";
+}
 
-  const groups = {
-    idle: getCampaignsByType("idle"),
-    visitor: getCampaignsByType("visitor"),
-    student: getCampaignsByType("student"),
-  };
-
-  // Add menu campaign
-  if (state.menuCampaign) {
-    groups.menu = [state.menuCampaign];
+function renderTimelineBars(items) {
+  const list = Array.isArray(items) ? items.slice(0, 6) : [];
+  if (list.length === 0) {
+    return '<div class="overview-timeline-empty">No blocks yet</div>';
   }
 
-  let html = "";
+  const maxDuration = Math.max(...list.map((item) => Math.max(1, Number(item.durationSec) || 1)), 1);
+  return `
+    <div class="overview-timeline-bars">
+      ${list
+    .map((item) => {
+      const duration = Math.max(1, Number(item.durationSec) || 1);
+      const width = Math.max(12, Math.round((duration / maxDuration) * 100));
+      return `<span class="overview-bar" style="width:${width}%"></span>`;
+    })
+    .join("")}
+    </div>
+  `;
+}
+
+/* ===== SIDEBAR RENDERING ===== */
+function renderSidebar() {
+  const sidebarContent = document.getElementById("overviewGrid");
+  if (!sidebarContent) return;
+  if (!state) {
+    sidebarContent.innerHTML = '<div class="overview-empty">Loading campaigns...</div>';
+    return;
+  }
 
   const query = sidebarQuery.trim().toLowerCase();
-  for (const [groupKey, campaigns] of Object.entries(groups)) {
-    if (!campaigns || campaigns.length === 0) continue;
+  const cards = normalizeCampaignCards().filter((card) => {
+    if (query && !String(card.name || "").toLowerCase().includes(query) && !String(card.subtitle || "").toLowerCase().includes(query)) {
+      return false;
+    }
+    if (overviewTypeFilter !== "all" && card.kind !== overviewTypeFilter) return false;
+    if (overviewStatusFilter !== "all" && card.status !== overviewStatusFilter) return false;
+    return true;
+  });
 
-    const filtered = query
-      ? campaigns.filter((c) => String(c.campaignName || "").toLowerCase().includes(query))
-      : campaigns;
-    if (filtered.length === 0) continue;
-
-    html += `<div class="campaign-group">
-      <div class="campaign-group-title">${escapeHtml(groupNames[groupKey] || groupKey)}</div>`;
-
-    filtered.forEach((campaign) => {
-      const id = groupKey === "student" ? campaign.nfcUid : campaign.campaignId;
-      const isActive = selectedCampaignId === id;
-      let status = "draft";
-      if (groupKey === "idle" && id === state.active?.idleCampaignId) status = "live";
-      else if (groupKey === "visitor" && id === state.active?.visitorCampaignId) status = "live";
-      else if (groupKey === "menu") status = "live";
-      else if (groupKey === "student") status = "live";
-      const statusBadge = `<span class="campaign-item-badge ${status}">${status}</span>`;
-
-      const icon = {
-        idle: "◆",
-        visitor: "◇",
-        student: "👤",
-        menu: "≡",
-      }[groupKey] || "○";
-
-      html += `
-        <div class="campaign-item ${isActive ? "active" : ""}" onclick="loadCampaignToEditor('${escapeHtml(groupKey)}', '${escapeHtml(id)}')">
-          <div class="campaign-item-icon">${icon}</div>
-          <div class="campaign-item-name">${escapeHtml(campaign.campaignName)}</div>
-          ${statusBadge}
-        </div>
-      `;
-    });
-
-    html += `</div>`;
+  const liveCount = cards.filter((card) => card.status === "live").length;
+  const totalCount = cards.length;
+  const countEl = document.getElementById("overviewCount");
+  if (countEl) {
+    countEl.textContent = `${totalCount} campaigns`;
+  }
+  const liveEl = document.getElementById("overviewLiveCount");
+  if (liveEl) {
+    liveEl.textContent = `${liveCount} live`;
   }
 
-  sidebarContent.innerHTML = html || '<div style="padding: 16px; color: var(--text-tertiary); font-size: 12px;">No campaigns yet</div>';
+  const html = cards.map((card) => {
+    const isActive = selectedCampaignId === card.id;
+    const safeKind = escapeHtml(card.kind);
+    const kindArg = JSON.stringify(String(card.kind || ""));
+    const idArg = JSON.stringify(String(card.id || ""));
+    return `
+      <article class="overview-card type-${safeKind} status-${escapeHtml(card.status)} ${isActive ? "active" : ""}" onclick='loadCampaignToEditor(${kindArg}, ${idArg})'>
+        <div class="overview-card-accent"></div>
+        <div class="overview-card-top">
+          <span class="type-badge">${escapeHtml(cardTypeLabel(card.kind))}</span>
+          <span class="status-pill ${escapeHtml(card.status)}">${escapeHtml(card.status === "live" ? "Live" : "Draft")}</span>
+        </div>
+        <h3 class="overview-card-title">${escapeHtml(card.name)}</h3>
+        <p class="overview-card-subtitle">${escapeHtml(card.subtitle)}</p>
+        <div class="overview-meta">
+          <span>${card.items.length} blocks</span>
+          <span>Modified ${escapeHtml(toRelativeTime(card.updatedAt))}</span>
+        </div>
+        ${renderTimelineBars(card.items)}
+        <div class="overview-actions" onclick="event.stopPropagation()">
+          <button class="overview-action" onclick='loadCampaignToEditor(${kindArg}, ${idArg})'>Edit</button>
+          <button class="overview-action" onclick='duplicateCampaignFromOverview(${kindArg}, ${idArg})'>Duplicate</button>
+          <button class="overview-action primary" onclick='deployCampaignFromOverview(${kindArg}, ${idArg})'>Deploy</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  sidebarContent.innerHTML = html || '<div class="overview-empty">No campaigns match your filters.</div>';
+}
+
+function duplicateCampaignFromOverview(type, id) {
+  if (!state) return;
+
+  selectedCampaignId = null;
+  selectedBlockIndex = null;
+
+  if (type === "student") {
+    const student = (state.students || []).find((s) => s.nfcUid === id);
+    if (!student) {
+      setStatus("Student campaign not found", false);
+      return;
+    }
+    setBuilderFromCampaign(student.campaign, "student", student.nfcUid);
+    builder.campaignId = null;
+    builder.studentUid = "";
+    builder.campaignName = `${student.name || "Student"} Copy`;
+  } else if (type === "menu") {
+    if (!state.menuCampaign) {
+      setStatus("Menu campaign not found", false);
+      return;
+    }
+    setBuilderFromCampaign(state.menuCampaign, "menu");
+    builder.campaignId = null;
+    builder.campaignName = `${state.menuCampaign.campaignName || "Menu"} Copy`;
+  } else {
+    const campaign = getCampaignsByType(type).find((c) => c.campaignId === id);
+    if (!campaign) {
+      setStatus("Campaign not found", false);
+      return;
+    }
+    setBuilderFromCampaign(campaign, type);
+    builder.campaignId = null;
+    builder.campaignName = `${campaign.campaignName || "Campaign"} Copy`;
+  }
+
+  syncFormFromBuilder();
+  renderSidebar();
+  renderInspector();
+  updateCampaignHeader();
+  setStatus("Duplicate loaded into editor draft", true);
+}
+
+async function deployCampaignFromOverview(type, id) {
+  if (!state) return;
+
+  try {
+    if (type === "idle" || type === "visitor") {
+      await api("/api/active", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          idleCampaignId: type === "idle" ? id : state.active?.idleCampaignId,
+          visitorCampaignId: type === "visitor" ? id : state.active?.visitorCampaignId,
+        }),
+      });
+      await refresh();
+      setStatus(`${cardTypeLabel(type)} campaign deployed`, true);
+      return;
+    }
+
+    if (type === "menu") {
+      loadCampaignToEditor("menu", id);
+      await publishCampaign();
+      return;
+    }
+
+    loadCampaignToEditor("student", id);
+    setStatus("Student campaigns are available on NFC tap", true);
+  } catch (e) {
+    setStatus("Deploy failed", false, e.issues || []);
+  }
 }
 
 /* ===== BLOCK CARD RENDERING ===== */
@@ -1442,6 +1613,22 @@ function bindEvents() {
       renderSidebar();
     });
   }
+
+  const typeFilterEl = document.getElementById("overviewTypeFilter");
+  if (typeFilterEl) {
+    typeFilterEl.addEventListener("change", (e) => {
+      overviewTypeFilter = String(e.target.value || "all");
+      renderSidebar();
+    });
+  }
+
+  const statusFilterEl = document.getElementById("overviewStatusFilter");
+  if (statusFilterEl) {
+    statusFilterEl.addEventListener("change", (e) => {
+      overviewStatusFilter = String(e.target.value || "all");
+      renderSidebar();
+    });
+  }
 }
 
 window.saveBuilderCampaign = saveBuilderCampaign;
@@ -1461,6 +1648,8 @@ window.loadExistingCampaign = loadExistingCampaign;
 window.loadExistingStudent = loadExistingStudent;
 window.createNewCampaign = createNewCampaign;
 window.loadCampaignToEditor = loadCampaignToEditor;
+window.duplicateCampaignFromOverview = duplicateCampaignFromOverview;
+window.deployCampaignFromOverview = deployCampaignFromOverview;
 window.selectBlock = selectBlock;
 window.duplicateBlock = duplicateBlock;
 window.showBlockMenu = showBlockMenu;

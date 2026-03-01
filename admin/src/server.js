@@ -242,20 +242,24 @@ function renderAdminPage() {
   <title>Digital Signage Campaign Builder</title>
   <style>
     :root {
-      --bg-primary: #f8f9fa;
+      --bg-primary: #f3f5f8;
       --bg-secondary: #ffffff;
-      --border: #e5e7eb;
-      --border-light: #f0f1f3;
-      --text-primary: #111827;
-      --text-secondary: #6b7280;
-      --text-tertiary: #9ca3af;
-      --accent: #3b82f6;
+      --bg-elevated: #f8fafc;
+      --border: #e4e8ee;
+      --border-light: #eef2f7;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #94a3b8;
+      --accent: #0f6bff;
       --accent-light: #dbeafe;
-      --accent-dark: #1e40af;
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --sidebar-width: 280px;
+      --accent-dark: #1d4ed8;
+      --success: #059669;
+      --danger: #dc2626;
+      --warning: #ca8a04;
+      --idle-accent: #2065d1;
+      --visitor-accent: #0f9b8e;
+      --student-accent: #9358c7;
+      --menu-accent: #d4701f;
       --inspector-width: 320px;
     }
 
@@ -270,7 +274,7 @@ function renderAdminPage() {
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", sans-serif;
+      font-family: "Inter", "SF Pro Text", "Segoe UI", "Helvetica Neue", "Arial", sans-serif;
       background: var(--bg-primary);
       color: var(--text-primary);
       line-height: 1.5;
@@ -279,167 +283,9 @@ function renderAdminPage() {
     /* Main Layout */
     .app-container {
       display: grid;
-      grid-template-columns: var(--sidebar-width) 1fr var(--inspector-width);
+      grid-template-columns: minmax(0, 1fr) var(--inspector-width);
       height: 100vh;
       gap: 0;
-    }
-
-    /* ===== SIDEBAR ===== */
-    .sidebar {
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .sidebar-header {
-      padding: 20px 16px;
-      border-bottom: 1px solid var(--border-light);
-      flex-shrink: 0;
-    }
-
-    .sidebar-logo {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin: 0 0 16px 0;
-    }
-
-    .sidebar-search {
-      position: relative;
-    }
-
-    .sidebar-search input {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 13px;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      transition: all 0.2s;
-    }
-
-    .sidebar-search input:focus {
-      outline: none;
-      border-color: var(--accent);
-      background: var(--bg-secondary);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
-
-    .sidebar-action {
-      margin-top: 12px;
-    }
-
-    .btn-create {
-      width: 100%;
-      padding: 10px 12px;
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 13px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-create:hover {
-      background: var(--accent-dark);
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-    }
-
-    .sidebar-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px 8px;
-    }
-
-    .campaign-group {
-      margin-bottom: 20px;
-    }
-
-    .campaign-group-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      color: var(--text-tertiary);
-      padding: 8px 12px;
-      letter-spacing: 0.5px;
-    }
-
-    .campaign-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      margin: 4px 0;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid transparent;
-    }
-
-    .campaign-item:hover {
-      background: var(--bg-primary);
-      border-color: var(--border-light);
-    }
-
-    .campaign-item.active {
-      background: var(--accent-light);
-      border-color: var(--accent);
-      color: var(--accent-dark);
-    }
-
-    .campaign-item-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      flex-shrink: 0;
-      background: var(--bg-primary);
-      color: var(--text-secondary);
-    }
-
-    .campaign-item.active .campaign-item-icon {
-      background: var(--accent);
-      color: white;
-    }
-
-    .campaign-item-name {
-      flex: 1;
-      font-size: 13px;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .campaign-item-badge {
-      font-size: 10px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      text-transform: uppercase;
-      background: var(--bg-primary);
-      color: var(--text-secondary);
-      flex-shrink: 0;
-    }
-
-    .campaign-item-badge.live {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    .campaign-item-badge.draft {
-      background: #f3f4f6;
-      color: #6b7280;
     }
 
     /* ===== CENTER CANVAS ===== */
@@ -450,12 +296,307 @@ function renderAdminPage() {
       background: var(--bg-primary);
     }
 
+    .overview-shell {
+      margin: 18px 20px 0 20px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+      max-height: 42vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .overview-floating-head {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      backdrop-filter: blur(8px);
+      background: rgba(255, 255, 255, 0.88);
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .overview-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
+    }
+
+    .overview-sub {
+      margin: 2px 0 0 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .overview-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .overview-search,
+    .overview-filter {
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border-radius: 10px;
+      font-size: 12px;
+      padding: 8px 10px;
+      transition: all 0.18s ease;
+    }
+
+    .overview-search {
+      min-width: 190px;
+    }
+
+    .overview-search:focus,
+    .overview-filter:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
+
+    .btn-create {
+      padding: 8px 12px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .btn-create:hover {
+      background: var(--accent-dark);
+      box-shadow: 0 8px 18px rgba(15, 107, 255, 0.25);
+      transform: translateY(-1px);
+    }
+
+    .overview-grid {
+      flex: 1;
+      overflow: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .overview-card {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+      min-height: 170px;
+      padding: 12px;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      overflow: hidden;
+    }
+
+    .overview-card:hover {
+      transform: translateY(-3px) scale(1.01);
+      box-shadow: 0 14px 26px rgba(15, 23, 42, 0.13);
+      border-color: #c8d1dd;
+    }
+
+    .overview-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-light), 0 16px 28px rgba(15, 23, 42, 0.12);
+    }
+
+    .overview-card.status-live:hover {
+      box-shadow: 0 0 0 1px rgba(15, 107, 255, 0.25), 0 18px 32px rgba(15, 107, 255, 0.16);
+    }
+
+    .overview-card-accent {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent);
+      opacity: 0.95;
+    }
+
+    .overview-card.type-idle .overview-card-accent { background: var(--idle-accent); }
+    .overview-card.type-visitor .overview-card-accent { background: var(--visitor-accent); }
+    .overview-card.type-student .overview-card-accent { background: var(--student-accent); }
+    .overview-card.type-menu .overview-card-accent { background: var(--menu-accent); }
+
+    .overview-card-top {
+      margin-top: 2px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .type-badge,
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 4px 8px;
+    }
+
+    .type-badge {
+      color: #0f172a;
+      background: #e9eef5;
+    }
+
+    .status-pill.live {
+      color: #065f46;
+      background: #d1fae5;
+    }
+
+    .status-pill.draft {
+      color: #475569;
+      background: #e2e8f0;
+    }
+
+    .overview-card-title {
+      margin: 10px 0 2px;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      font-weight: 630;
+      color: var(--text-primary);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .overview-card-subtitle {
+      margin: 0;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      min-height: 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .overview-meta {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+      gap: 10px;
+    }
+
+    .overview-timeline-bars {
+      margin-top: 10px;
+      display: flex;
+      gap: 5px;
+      align-items: flex-end;
+      min-height: 12px;
+    }
+
+    .overview-bar {
+      display: block;
+      height: 7px;
+      min-width: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #d5ddeb 0%, #c7d4e6 100%);
+      opacity: 0.95;
+      transition: transform 0.18s ease;
+    }
+
+    .overview-card:hover .overview-bar {
+      transform: translateY(-1px);
+    }
+
+    .overview-timeline-empty {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    .overview-actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 6px;
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .overview-card:hover .overview-actions,
+    .overview-card.active .overview-actions {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .overview-action {
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 8px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .overview-action:hover {
+      border-color: #bac7d8;
+      color: var(--text-primary);
+      background: #f8fbff;
+    }
+
+    .overview-action.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .overview-action.primary:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
+    }
+
+    .overview-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-tertiary);
+      font-size: 13px;
+    }
+
     .canvas-header {
-      padding: 20px 24px;
+      margin: 14px 20px 0 20px;
+      padding: 18px 20px;
       border-bottom: 1px solid var(--border);
       background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 14px 14px 0 0;
       flex-shrink: 0;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
     }
 
     .canvas-header-top {
@@ -597,7 +738,12 @@ function renderAdminPage() {
     .canvas-scroll {
       flex: 1;
       overflow-y: auto;
-      padding: 24px;
+      margin: 0 20px 20px 20px;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 14px 14px;
     }
 
     .blocks-container {
@@ -934,55 +1080,102 @@ function renderAdminPage() {
     /* Responsive */
     @media (max-width: 1400px) {
       :root {
-        --sidebar-width: 240px;
         --inspector-width: 280px;
       }
     }
 
     @media (max-width: 1200px) {
       .app-container {
-        grid-template-columns: var(--sidebar-width) 1fr;
+        grid-template-columns: 1fr;
       }
 
       .inspector {
         display: none;
       }
 
+      .overview-grid {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      }
+
       .canvas-scroll {
-        padding: 20px;
+        margin: 0 16px 16px 16px;
+      }
+
+      .canvas-header,
+      .overview-shell {
+        margin-left: 16px;
+        margin-right: 16px;
       }
     }
+
     @media (max-width: 900px) {
-      .app-container {
+      .overview-floating-head {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .overview-controls {
+        justify-content: flex-start;
+      }
+
+      .overview-search {
+        min-width: 0;
+        width: 100%;
+      }
+
+      .overview-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .overview-grid {
         grid-template-columns: 1fr;
       }
-      .sidebar {
-        display: none;
+
+      .canvas-header,
+      .canvas-scroll,
+      .overview-shell {
+        margin-left: 12px;
+        margin-right: 12px;
       }
     }
   </style>
 </head>
 <body>
   <div class="app-container">
-    <!-- SIDEBAR: Campaign Library -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-logo">Campaigns</div>
-        <div class="sidebar-search">
-          <input type="text" id="sidebarSearch" placeholder="Search campaigns..." />
-        </div>
-        <div class="sidebar-action">
-          <button class="btn-create" onclick="createNewCampaign()">+ Create</button>
-        </div>
-      </div>
-
-      <div class="sidebar-content" id="sidebarContent">
-        <!-- Populated by JavaScript -->
-      </div>
-    </aside>
-
     <!-- CENTER: Campaign Editor -->
     <div class="center-canvas">
+      <section class="overview-shell">
+        <div class="overview-floating-head">
+          <div>
+            <h2 class="overview-title">Campaign Overview</h2>
+            <p class="overview-sub">
+              <span id="overviewCount">0 campaigns</span>
+              <span>|</span>
+              <span id="overviewLiveCount">0 live</span>
+            </p>
+          </div>
+          <div class="overview-controls">
+            <input type="text" class="overview-search" id="sidebarSearch" placeholder="Search by name, UID, or ID" />
+            <select class="overview-filter" id="overviewTypeFilter">
+              <option value="all">All types</option>
+              <option value="idle">Idle</option>
+              <option value="visitor">Visitor</option>
+              <option value="student">Student</option>
+              <option value="menu">Menu</option>
+            </select>
+            <select class="overview-filter" id="overviewStatusFilter">
+              <option value="all">All status</option>
+              <option value="live">Live</option>
+              <option value="draft">Draft</option>
+            </select>
+            <button class="btn-create" onclick="createNewCampaign()">+ Create</button>
+          </div>
+        </div>
+        <div class="overview-grid" id="overviewGrid"></div>
+      </section>
+
       <header class="canvas-header">
         <div class="canvas-header-top">
           <div class="header-title-block">
