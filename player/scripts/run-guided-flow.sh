@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# IDS Guided Flow Script
-# Purpose: launch guided demo mode and optionally auto-inject events.
-# Fit: scripted demo of the guided text flow.
-
 set -euo pipefail
 
 PORT="${PORT:-7070}"
-NAME="${1:-Visitor}"
 AUTO="${AUTO:-1}"
-CHOICE="${CHOICE:-visitor}"
+MODE="${MODE:-visitor}" # visitor|student
+UID="${UID:-demo-uid-001}"
 
-node player/src/index.js --guided-flow --serve --port "$PORT" &
+node player/src/index.js --config shared/contract/examples/config.welcome.json --port "$PORT" &
 PLAYER_PID=$!
 
 cleanup() {
@@ -20,27 +16,22 @@ trap cleanup EXIT INT TERM
 
 sleep 1
 echo "Guided flow running at: http://127.0.0.1:${PORT}/"
-echo "Initial page: IDLE text loop (IDLE 1 -> IDLE 4)"
-echo "Choice mode: ${CHOICE}"
 
 if [[ "$AUTO" == "1" ]]; then
-  echo "Sending motion event..."
   curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
     -H "content-type: application/json" \
-    -d '{"type":"VISION_PRESENT","timestamp":"2026-02-18T10:00:00Z"}' >/dev/null
+    -d '{"type":"movement_detected"}' >/dev/null
 
-  sleep 2
+  sleep 1
 
-  if [[ "$CHOICE" == "connect" ]]; then
-    echo "Sending connect choice event..."
+  if [[ "$MODE" == "student" ]]; then
     curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
       -H "content-type: application/json" \
-      -d '{"type":"CONNECT","timestamp":"2026-02-18T10:00:10Z"}' >/dev/null
+      -d "{\"type\":\"nfc_tap\",\"nfcUid\":\"${UID}\"}" >/dev/null
   else
-    echo "Sending visitor tap event for name: ${NAME}"
     curl -sS -X POST "http://127.0.0.1:${PORT}/events" \
       -H "content-type: application/json" \
-      -d "{\"type\":\"NFC_TAP\",\"studentId\":\"${NAME}\",\"timestamp\":\"2026-02-18T10:00:10Z\"}" >/dev/null
+      -d '{"type":"visitor_selected"}' >/dev/null
   fi
 fi
 
