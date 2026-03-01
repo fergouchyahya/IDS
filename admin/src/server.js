@@ -1,27 +1,32 @@
 /**
- * IDS Admin — Minimal HTTP API (Phase 6)
- *
- * Endpoints:
- *   POST /configs      upload + validate
- *   GET  /configs      list metadata
- *   GET  /configs/:id  fetch full config
+ * IDS Admin — HTTP API + simple web UI.
  */
 
-const http = require("http");
+const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
+const http = require("http");
 
-const Ajv2020 = require("ajv/dist/2020");
-const addFormats = require("ajv-formats");
+const {
+  readState,
+  createCampaign,
+  updateCampaign,
+  deleteCampaign,
+  setActiveCampaigns,
+  setSettings,
+  upsertStudent,
+  deleteStudent,
+  setMenuCampaign,
+  toRuntimeConfig,
+} = require("./storage");
 
-const { appendConfigRecord, listConfigMeta, getConfigById } = require("./storage");
+const ADMIN_UI_JS_PATH = path.resolve(__dirname, "../public/admin-ui.js");
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (chunk) => {
       data += chunk;
-      if (data.length > 1_000_000) {
+      if (data.length > 2_000_000) {
         reject(new Error("Body too large"));
         req.destroy();
       }
@@ -29,7 +34,7 @@ function readJsonBody(req) {
     req.on("end", () => {
       try {
         resolve(JSON.parse(data || "{}"));
-      } catch (e) {
+      } catch {
         reject(new Error("Invalid JSON body"));
       }
     });
@@ -45,69 +50,218 @@ function json(res, code, obj) {
   res.end(body);
 }
 
-function formatAjvErrors(errors) {
-  if (!errors || errors.length === 0) return ["Unknown validation error"];
-  return errors.map((e) => {
-    const where = e.instancePath && e.instancePath.length > 0 ? e.instancePath : "/";
-    return `${where} ${e.message}`;
+function text(res, code, body, contentType) {
+  res.writeHead(code, {
+    "Content-Type": contentType,
+    "Content-Length": Buffer.byteLength(body),
   });
+  res.end(body);
 }
 
-function buildValidator() {
-  const schemaPath = path.resolve(__dirname, "../../shared/contract/schema/config.schema.json");
-  const schema = JSON.parse(require("fs").readFileSync(schemaPath, "utf8"));
-  const ajv = new Ajv2020({ strict: false, allErrors: true });
-  addFormats(ajv);
-  return ajv.compile(schema);
-}
+function renderAdminPage() {
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IDS Admin</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #111; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; border: 1px solid #ddd; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    input, select, textarea, button { font: inherit; padding: 8px 10px; }
+    textarea { width: 100%; min-height: 90px; }
+    .list { margin-top: 8px; border-top: 1px solid #eee; padding-top: 8px; }
+    .item { border: 1px solid #e9e9e9; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #fafafa; }
+    .mono { font-family: monospace; font-size: 12px; }
+    .good { color: #0a7a3f; }
+    .bad { color: #b52222; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>IDS Admin</h1>
+    <div id="status"></div>
 
-function checksumOf(obj) {
-  const raw = JSON.stringify(obj);
-  return crypto.createHash("sha256").update(raw).digest("hex");
+    <div class="grid">
+      <section class="card">
+        <h2>Settings</h2>
+        <div class="row">
+          <label>Inactivity timeout (ms)</label>
+          <input id="timeoutMs" type="number" min="100" step="100" />
+          <button onclick="saveSettings()">Save</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Active Campaign Selection</h2>
+        <div class="row">
+          <label>Idle:</label>
+          <select id="activeIdle"></select>
+          <label>Visitor:</label>
+          <select id="activeVisitor"></select>
+          <button onclick="saveActive()">Apply</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Menu Campaign</h2>
+        <div class="row">
+          <input id="menuName" placeholder="Menu name" />
+        </div>
+        <textarea id="menuItems" placeholder='JSON array of items: [{"type":"TEXT","data":"Student or Visitor","order":1,"durationSec":60}]'></textarea>
+        <div class="row">
+          <button onclick="saveMenu()">Save Menu</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Create Campaign (Idle/Visitor)</h2>
+        <div class="row">
+          <select id="campaignKind">
+            <option value="idle">Idle</option>
+            <option value="visitor">Visitor</option>
+          </select>
+          <input id="campaignName" placeholder="Campaign name" />
+        </div>
+        <textarea id="campaignItems" placeholder='JSON array of items: [{"type":"TEXT","data":"Page 1","order":1,"durationSec":30}]'></textarea>
+        <div class="row">
+          <button onclick="createCampaignUI()">Create campaign</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Students (NFC UID -> personal campaign)</h2>
+        <div class="row">
+          <input id="studentUid" placeholder="NFC UID" />
+          <input id="studentName" placeholder="Student name" />
+        </div>
+        <textarea id="studentItems" placeholder='JSON array of items: [{"type":"TEXT","data":"Timetable...","order":1,"durationSec":30}]'></textarea>
+        <div class="row">
+          <button onclick="saveStudent()">Save/Update student</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Current Data</h2>
+        <div id="lists"></div>
+      </section>
+    </div>
+  </div>
+  <script src="/admin-ui.js"></script>
+</body>
+</html>`;
 }
 
 function createServer({ port = 8081 } = {}) {
-  const validate = buildValidator();
-
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
-    if (req.method === "GET" && url.pathname === "/configs") {
-      const configs = listConfigMeta();
-      return json(res, 200, { configs });
+    if (req.method === "GET" && url.pathname === "/") {
+      return text(res, 200, renderAdminPage(), "text/html; charset=utf-8");
     }
 
-    if (req.method === "GET" && url.pathname.startsWith("/configs/")) {
-      const id = url.pathname.split("/")[2];
-      const record = getConfigById(id);
-      if (!record) return json(res, 404, { error: "not_found" });
-      return json(res, 200, record);
+    if (req.method === "GET" && url.pathname === "/admin-ui.js") {
+      const script = fs.readFileSync(ADMIN_UI_JS_PATH, "utf8");
+      return text(res, 200, script, "application/javascript; charset=utf-8");
     }
 
-    if (req.method === "POST" && url.pathname === "/configs") {
-      let config;
+    if (req.method === "GET" && url.pathname === "/api/state") {
+      const state = readState();
+      return json(res, 200, { state });
+    }
+
+    if (req.method === "GET" && url.pathname === "/runtime-config") {
+      const state = readState();
+      return json(res, 200, toRuntimeConfig(state));
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/campaigns") {
       try {
-        config = await readJsonBody(req);
+        const body = await readJsonBody(req);
+        const state = createCampaign(body);
+        return json(res, 201, { state });
       } catch (e) {
-        return json(res, 400, { error: "invalid_json", details: [e.message] });
+        return json(res, 400, { error: e.message });
       }
-
-      const ok = validate(config);
-      if (!ok) {
-        return json(res, 400, { error: "validation_error", details: formatAjvErrors(validate.errors) });
-      }
-
-      const meta = {
-        configId: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        checksum: checksumOf(config),
-      };
-
-      appendConfigRecord({ meta, config });
-      return json(res, 201, meta);
     }
 
-    return json(res, 404, { error: "not_found" });
+    if (req.method === "PUT" && url.pathname.startsWith("/api/campaigns/")) {
+      const campaignId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      try {
+        const body = await readJsonBody(req);
+        const state = updateCampaign(campaignId, body);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/campaigns/")) {
+      const campaignId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      try {
+        const state = deleteCampaign(campaignId);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/active") {
+      try {
+        const body = await readJsonBody(req);
+        const state = setActiveCampaigns(body);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/settings") {
+      try {
+        const body = await readJsonBody(req);
+        const state = setSettings(body);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/menu-campaign") {
+      try {
+        const body = await readJsonBody(req);
+        const state = setMenuCampaign(body);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/students") {
+      try {
+        const body = await readJsonBody(req);
+        const state = upsertStudent(body);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/students/")) {
+      const uid = decodeURIComponent(url.pathname.split("/")[3] || "");
+      try {
+        const state = deleteStudent(uid);
+        return json(res, 200, { state });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+
+    return json(res, 404, { error: `not_found: ${url.pathname}` });
   });
 
   server.listen(port, "127.0.0.1", () => {

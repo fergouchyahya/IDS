@@ -1,55 +1,80 @@
 /**
  * IDS Player — Entry Point
- *
- * Loads a campaign config and starts an HTTP server for:
- * - GET /fetch → return current campaign item
- * - POST /events → trigger state transitions
  */
 
 const fs = require("fs");
 const path = require("path");
-const Ajv2020 = require("ajv/dist/2020");
-const addFormats = require("ajv-formats");
 
-const { createServer } = require("./server");
+const { createServer, normalizeRuntimeConfig } = require("./server");
 
-function loadAndValidateConfig(configPath) {
+function loadJson(configPath) {
   if (!fs.existsSync(configPath)) {
     console.error(`Config file not found: ${configPath}`);
     process.exit(2);
   }
 
   const raw = fs.readFileSync(configPath, "utf8");
-  let config;
   try {
-    config = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch (e) {
     console.error(`Invalid JSON: ${e.message}`);
     process.exit(1);
   }
-
-  const schemaPath = path.resolve(__dirname, "../../shared/contract/schema/config.schema.json");
-  const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
-  const ajv = new Ajv2020({ strict: false, allErrors: true });
-  addFormats(ajv);
-  const validate = ajv.compile(schema);
-
-  const ok = validate(config);
-  if (!ok) {
-    console.error("Validation failed:");
-    validate.errors?.forEach((e) => {
-      console.error(`  ${e.instancePath || "/"} ${e.message}`);
-    });
-    process.exit(1);
-  }
-
-  return config;
 }
 
-const configPath = process.argv[2] || process.env.IDS_CONFIG || "config.json";
-const port = Number(process.env.PLAYER_PORT || 7070);
+function parseCli(argv) {
+  const args = {
+    configPath: process.env.IDS_CONFIG || "shared/contract/examples/config.welcome.json",
+    port: Number(process.env.PLAYER_PORT || 7070),
+    adminUrl: process.env.IDS_ADMIN_URL || "",
+  };
 
-const config = loadAndValidateConfig(configPath);
-console.log(`[Player] Config loaded: ${config.campaigns.length} campaign(s)`);
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === "--config" && argv[i + 1]) {
+      args.configPath = argv[i + 1];
+      i += 1;
+      continue;
+    }
 
-createServer({ config, port });
+    if (token === "--port" && argv[i + 1]) {
+      args.port = Number(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    if (token === "--admin-url" && argv[i + 1]) {
+      args.adminUrl = argv[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (!token.startsWith("--")) {
+      args.configPath = token;
+    }
+  }
+
+  if (!Number.isInteger(args.port) || args.port <= 0 || args.port > 65535) {
+    console.error("Invalid port. Use 1..65535.");
+    process.exit(2);
+  }
+
+  return args;
+}
+
+const cli = parseCli(process.argv.slice(2));
+const configPath = path.resolve(process.cwd(), cli.configPath);
+const config = loadJson(configPath);
+
+if (!normalizeRuntimeConfig(config)) {
+  console.error("Config format not recognized. Expected runtime-config shape or legacy campaigns shape.");
+  process.exit(1);
+}
+
+console.log("[Player] Boot config loaded");
+
+createServer({
+  config,
+  port: cli.port,
+  adminUrl: cli.adminUrl || undefined,
+});
