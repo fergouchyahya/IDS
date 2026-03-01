@@ -9,6 +9,7 @@ validate:
 	node shared/contract/scripts/validate-config.js
 
 test:
+	npm --prefix admin test
 	npm --prefix player test
 
 run-admin:

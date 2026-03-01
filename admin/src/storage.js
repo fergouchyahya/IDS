@@ -8,8 +8,20 @@
 const fs = require("fs");
 const path = require("path");
 
-const DATA_DIR = path.resolve(__dirname, "../data");
+const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
+  ? path.resolve(process.env.IDS_ADMIN_DATA_DIR)
+  : path.resolve(__dirname, "../data");
 const DATA_FILE = path.join(DATA_DIR, "state.json");
+
+const ALLOWED_ITEM_TYPES = new Set(["TEXT", "IMAGE", "VIDEO"]);
+
+class ValidationError extends Error {
+  constructor(issues, message = "validation_failed") {
+    super(message);
+    this.name = "ValidationError";
+    this.issues = Array.isArray(issues) ? issues : [];
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -17,6 +29,20 @@ function nowIso() {
 
 function makeId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function issue(pathLabel, message, code) {
+  return {
+    path: pathLabel,
+    message,
+    code,
+  };
+}
+
+function throwIfIssues(issues) {
+  if (issues.length > 0) {
+    throw new ValidationError(issues);
+  }
 }
 
 function defaultMenuCampaign() {
@@ -144,8 +170,7 @@ function readState() {
 
   // Best-effort migration from legacy storage.
   if (Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)) {
-    const migrated = defaultState();
-    return migrated;
+    return defaultState();
   }
 
   return parsed;
@@ -160,19 +185,6 @@ function writeState(state) {
   return next;
 }
 
-function normalizeItems(items) {
-  const list = Array.isArray(items) ? items : [];
-  return list
-    .map((item, idx) => ({
-      contentId: typeof item.contentId === "string" && item.contentId.trim() ? item.contentId.trim() : `content-${idx + 1}`,
-      type: typeof item.type === "string" && item.type.trim() ? item.type.trim().toUpperCase() : "TEXT",
-      data: typeof item.data === "string" ? item.data : "",
-      order: Number.isInteger(item.order) ? item.order : idx + 1,
-      durationSec: Number.isInteger(item.durationSec) && item.durationSec > 0 ? item.durationSec : 30,
-    }))
-    .sort((a, b) => a.order - b.order);
-}
-
 function validateCampaignKind(kind) {
   return kind === "idle" || kind === "visitor";
 }
@@ -181,16 +193,89 @@ function getCampaignListByKind(state, kind) {
   return kind === "idle" ? state.idleCampaigns : state.visitorCampaigns;
 }
 
+function normalizeAndValidateItems(items, pathPrefix = "items") {
+  const issues = [];
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new ValidationError([
+      issue(pathPrefix, "At least one content block is required", "required"),
+    ]);
+  }
+
+  const seenContentIds = new Set();
+  const normalized = items.map((item, idx) => {
+    const currentPath = `${pathPrefix}[${idx}]`;
+    const contentIdRaw = String(item?.contentId || "").trim();
+    const typeRaw = String(item?.type || "").trim().toUpperCase();
+    const dataRaw = typeof item?.data === "string" ? item.data.trim() : "";
+    const orderRaw = Number(item?.order);
+    const durationRaw = Number(item?.durationSec);
+
+    if (!contentIdRaw) {
+      issues.push(issue(`${currentPath}.contentId`, "contentId is required", "required"));
+    } else if (seenContentIds.has(contentIdRaw)) {
+      issues.push(issue(`${currentPath}.contentId`, "contentId must be unique in a campaign", "duplicate"));
+    }
+
+    if (contentIdRaw) {
+      seenContentIds.add(contentIdRaw);
+    }
+
+    if (!ALLOWED_ITEM_TYPES.has(typeRaw)) {
+      issues.push(issue(`${currentPath}.type`, "type must be one of TEXT, IMAGE, VIDEO", "invalid_enum"));
+    }
+
+    if (!Number.isInteger(orderRaw) || orderRaw < 1) {
+      issues.push(issue(`${currentPath}.order`, "order must be an integer >= 1", "invalid_number"));
+    }
+
+    if (!Number.isInteger(durationRaw) || durationRaw < 1) {
+      issues.push(issue(`${currentPath}.durationSec`, "durationSec must be an integer >= 1", "invalid_number"));
+    }
+
+    if (typeRaw === "TEXT") {
+      if (!dataRaw) {
+        issues.push(issue(`${currentPath}.data`, "TEXT block requires non-empty text data", "required"));
+      }
+    } else if (typeRaw === "IMAGE" || typeRaw === "VIDEO") {
+      if (!dataRaw) {
+        issues.push(issue(`${currentPath}.data`, `${typeRaw} block requires an uploaded media URL`, "required"));
+      }
+    }
+
+    return {
+      contentId: contentIdRaw || `content-${idx + 1}`,
+      type: typeRaw || "TEXT",
+      data: dataRaw,
+      order: Number.isInteger(orderRaw) ? orderRaw : idx + 1,
+      durationSec: Number.isInteger(durationRaw) ? durationRaw : 30,
+    };
+  });
+
+  throwIfIssues(issues);
+  return normalized.sort((a, b) => a.order - b.order);
+}
+
+function validateCampaignName(campaignName, pathLabel = "campaignName") {
+  const name = String(campaignName || "").trim();
+  if (!name) {
+    throw new ValidationError([issue(pathLabel, "campaignName is required", "required")]);
+  }
+  return name;
+}
+
 function createCampaign({ kind, campaignName, items }) {
   const state = readState();
-  if (!validateCampaignKind(kind)) throw new Error("Invalid campaign kind");
+
+  if (!validateCampaignKind(kind)) {
+    throw new ValidationError([issue("kind", "kind must be idle or visitor", "invalid_enum")]);
+  }
 
   const campaign = {
     campaignId: makeId(kind),
-    campaignName: String(campaignName || "Untitled campaign"),
+    campaignName: validateCampaignName(campaignName),
     kind,
     updatedAt: nowIso(),
-    items: normalizeItems(items),
+    items: normalizeAndValidateItems(items, "items"),
   };
 
   const list = getCampaignListByKind(state, kind);
@@ -201,15 +286,26 @@ function createCampaign({ kind, campaignName, items }) {
 
 function updateCampaign(campaignId, patch) {
   const state = readState();
+  const campaignIdTrimmed = String(campaignId || "").trim();
+
+  if (!campaignIdTrimmed) {
+    throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
+  }
 
   for (const list of [state.idleCampaigns, state.visitorCampaigns]) {
-    const idx = list.findIndex((c) => c.campaignId === campaignId);
+    const idx = list.findIndex((c) => c.campaignId === campaignIdTrimmed);
     if (idx >= 0) {
       const current = list[idx];
       const next = {
         ...current,
-        campaignName: typeof patch.campaignName === "string" ? patch.campaignName : current.campaignName,
-        items: patch.items ? normalizeItems(patch.items) : current.items,
+        campaignName:
+          patch && Object.prototype.hasOwnProperty.call(patch, "campaignName")
+            ? validateCampaignName(patch.campaignName)
+            : current.campaignName,
+        items:
+          patch && Object.prototype.hasOwnProperty.call(patch, "items")
+            ? normalizeAndValidateItems(patch.items, "items")
+            : current.items,
         updatedAt: nowIso(),
       };
       list[idx] = next;
@@ -217,15 +313,19 @@ function updateCampaign(campaignId, patch) {
     }
   }
 
-  throw new Error("Campaign not found");
+  throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
 }
 
 function deleteCampaign(campaignId) {
   const state = readState();
+  const id = String(campaignId || "").trim();
+  if (!id) {
+    throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
+  }
 
   const removeFrom = (list) => {
     const before = list.length;
-    const afterList = list.filter((c) => c.campaignId !== campaignId);
+    const afterList = list.filter((c) => c.campaignId !== id);
     return { changed: afterList.length !== before, list: afterList };
   };
 
@@ -235,14 +335,14 @@ function deleteCampaign(campaignId) {
   state.visitorCampaigns = visitor.list;
 
   if (!idle.changed && !visitor.changed) {
-    throw new Error("Campaign not found");
+    throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
   }
 
-  if (state.active.idleCampaignId === campaignId) {
+  if (state.active.idleCampaignId === id) {
     state.active.idleCampaignId = state.idleCampaigns[0]?.campaignId || null;
   }
 
-  if (state.active.visitorCampaignId === campaignId) {
+  if (state.active.visitorCampaignId === id) {
     state.active.visitorCampaignId = state.visitorCampaigns[0]?.campaignId || null;
   }
 
@@ -251,50 +351,83 @@ function deleteCampaign(campaignId) {
 
 function setActiveCampaigns({ idleCampaignId, visitorCampaignId }) {
   const state = readState();
+  const issues = [];
 
   if (idleCampaignId) {
     const exists = state.idleCampaigns.some((c) => c.campaignId === idleCampaignId);
-    if (!exists) throw new Error("Idle campaign not found");
-    state.active.idleCampaignId = idleCampaignId;
+    if (!exists) {
+      issues.push(issue("idleCampaignId", "Idle campaign not found", "not_found"));
+    }
   }
 
   if (visitorCampaignId) {
     const exists = state.visitorCampaigns.some((c) => c.campaignId === visitorCampaignId);
-    if (!exists) throw new Error("Visitor campaign not found");
-    state.active.visitorCampaignId = visitorCampaignId;
+    if (!exists) {
+      issues.push(issue("visitorCampaignId", "Visitor campaign not found", "not_found"));
+    }
   }
+
+  throwIfIssues(issues);
+
+  if (idleCampaignId) state.active.idleCampaignId = idleCampaignId;
+  if (visitorCampaignId) state.active.visitorCampaignId = visitorCampaignId;
 
   return writeState(state);
 }
 
 function setSettings(patch) {
-  const state = readState();
-  const timeout = Number(patch.inactivityTimeoutMs);
+  const timeout = Number(patch?.inactivityTimeoutMs);
   if (!Number.isInteger(timeout) || timeout < 100) {
-    throw new Error("Invalid inactivityTimeoutMs");
+    throw new ValidationError([
+      issue("inactivityTimeoutMs", "inactivityTimeoutMs must be an integer >= 100", "invalid_number"),
+    ]);
   }
 
+  const state = readState();
   state.settings.inactivityTimeoutMs = timeout;
   return writeState(state);
 }
 
-function upsertStudent({ nfcUid, name, items }) {
-  const state = readState();
+function normalizeStudentPayload({ nfcUid, name, items }) {
   const uid = String(nfcUid || "").trim();
-  if (!uid) throw new Error("nfcUid is required");
+  const studentName = String(name || "").trim();
+  const issues = [];
 
-  const idx = state.students.findIndex((s) => s.nfcUid === uid);
+  if (!uid) {
+    issues.push(issue("nfcUid", "nfcUid is required", "required"));
+  }
+
+  if (!studentName) {
+    issues.push(issue("name", "Student name is required", "required"));
+  }
+
+  if (issues.length > 0) {
+    throw new ValidationError(issues);
+  }
+
+  return {
+    nfcUid: uid,
+    name: studentName,
+    items: normalizeAndValidateItems(items, "items"),
+  };
+}
+
+function upsertStudent(payload) {
+  const state = readState();
+  const normalized = normalizeStudentPayload(payload || {});
+
+  const idx = state.students.findIndex((s) => s.nfcUid === normalized.nfcUid);
   const campaign = {
-    campaignId: `student-${uid}`,
-    campaignName: `${String(name || "Student")} Info`,
+    campaignId: `student-${normalized.nfcUid}`,
+    campaignName: `${normalized.name} Info`,
     kind: "student",
     updatedAt: nowIso(),
-    items: normalizeItems(items),
+    items: normalized.items,
   };
 
   const student = {
-    nfcUid: uid,
-    name: String(name || "Student"),
+    nfcUid: normalized.nfcUid,
+    name: normalized.name,
     campaign,
   };
 
@@ -306,20 +439,29 @@ function upsertStudent({ nfcUid, name, items }) {
 
 function deleteStudent(nfcUid) {
   const state = readState();
+  const uid = String(nfcUid || "").trim();
+  if (!uid) {
+    throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
+  }
+
   const before = state.students.length;
-  state.students = state.students.filter((s) => s.nfcUid !== nfcUid);
-  if (state.students.length === before) throw new Error("Student not found");
+  state.students = state.students.filter((s) => s.nfcUid !== uid);
+  if (state.students.length === before) {
+    throw new ValidationError([issue("nfcUid", "Student not found", "not_found")]);
+  }
+
   return writeState(state);
 }
 
 function setMenuCampaign({ campaignName, items }) {
   const state = readState();
+
   state.menuCampaign = {
     campaignId: "menu-default",
-    campaignName: String(campaignName || "Menu"),
+    campaignName: validateCampaignName(campaignName),
     kind: "menu",
     updatedAt: nowIso(),
-    items: normalizeItems(items),
+    items: normalizeAndValidateItems(items, "items"),
   };
   return writeState(state);
 }
@@ -340,6 +482,7 @@ function toRuntimeConfig(state) {
 }
 
 module.exports = {
+  ValidationError,
   readState,
   createCampaign,
   updateCampaign,
@@ -350,4 +493,5 @@ module.exports = {
   deleteStudent,
   setMenuCampaign,
   toRuntimeConfig,
+  normalizeAndValidateItems,
 };
