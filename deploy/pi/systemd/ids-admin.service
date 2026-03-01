@@ -1,0 +1,15 @@
+[Unit]
+Description=IDS Admin Service
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/ids
+EnvironmentFile=/etc/ids/ids.env
+ExecStart=/usr/bin/node /opt/ids/admin/src/index.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
