@@ -72,6 +72,13 @@ sudo systemctl enable ids-admin.service ids-player.service
 sudo systemctl start ids-admin.service ids-player.service
 ```
 
+Ensure upload storage is writable by the `pi` user:
+
+```bash
+sudo mkdir -p /opt/ids/admin/data/uploads
+sudo chown -R pi:pi /opt/ids/admin/data
+```
+
 ## 7. Verify
 
 ```bash

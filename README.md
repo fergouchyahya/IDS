@@ -56,12 +56,15 @@ In Admin (`http://127.0.0.1:8081`), you can:
 
 - Set inactivity timeout (`Settings`)
 - Choose active Idle and Visitor campaigns (`Active Campaign Selection`)
-- Edit the Menu campaign (`Menu Campaign`)
-- Create additional Idle/Visitor campaigns (`Create Campaign`)
-- Add/update students by NFC UID with personal campaign items (`Students`)
+- Build campaigns using a guided block editor (no raw JSON input)
+- Choose campaign type (`Idle`, `Visitor`, `Student`)
+- Duplicate existing campaigns or create new ones
+- Upload image/video files directly and bind them to blocks
+- Edit the Menu campaign with the same block builder
+- Add/update students by NFC UID with personal campaigns
 - Delete campaigns/students
 
-All data is persisted in `admin/data/state.json` (auto-created).
+All data is persisted in `admin/data/state.json` and uploaded media in `admin/data/uploads/` (auto-created).
 
 ### Player flow and events
 
@@ -118,6 +121,7 @@ From repo root:
 
 ```bash
 node shared/contract/scripts/validate-config.js
+npm --prefix admin test
 npm --prefix player test
 ```
 
