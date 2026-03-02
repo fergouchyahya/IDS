@@ -6,10 +6,13 @@ const fs = require("fs");
 const path = require("path");
 
 const { createServer, normalizeRuntimeConfig } = require("./server");
+const { createLogger } = require("../../shared/utils/logger");
+
+const logger = createLogger("ids-player-entry");
 
 function loadJson(configPath) {
   if (!fs.existsSync(configPath)) {
-    console.error(`Config file not found: ${configPath}`);
+    logger.error("config_missing", { configPath });
     process.exit(2);
   }
 
@@ -17,7 +20,7 @@ function loadJson(configPath) {
   try {
     return JSON.parse(raw);
   } catch (e) {
-    console.error(`Invalid JSON: ${e.message}`);
+    logger.error("config_invalid_json", { message: e.message, configPath });
     process.exit(1);
   }
 }
@@ -55,7 +58,7 @@ function parseCli(argv) {
   }
 
   if (!Number.isInteger(args.port) || args.port <= 0 || args.port > 65535) {
-    console.error("Invalid port. Use 1..65535.");
+    logger.error("invalid_port", { env: "PLAYER_PORT", value: process.env.PLAYER_PORT, parsed: args.port });
     process.exit(2);
   }
 
@@ -67,11 +70,14 @@ const configPath = path.resolve(process.cwd(), cli.configPath);
 const config = loadJson(configPath);
 
 if (!normalizeRuntimeConfig(config)) {
-  console.error("Config format not recognized. Expected runtime-config shape or legacy campaigns shape.");
+  logger.error("config_shape_invalid", {
+    message: "Expected runtime-config shape or legacy campaigns shape.",
+    configPath,
+  });
   process.exit(1);
 }
 
-console.log("[Player] Boot config loaded");
+logger.info("boot_config_loaded", { configPath });
 
 createServer({
   config,

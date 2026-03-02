@@ -6,7 +6,12 @@
  */
 
 const fs = require("fs");
+const fsp = fs.promises;
 const path = require("path");
+const { randomUUID } = require("crypto");
+const { createLogger } = require("../../shared/utils/logger");
+
+const logger = createLogger("ids-admin-storage");
 
 const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
   ? path.resolve(process.env.IDS_ADMIN_DATA_DIR)
@@ -14,6 +19,15 @@ const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
 const DATA_FILE = path.join(DATA_DIR, "state.json");
 
 const ALLOWED_ITEM_TYPES = new Set(["TEXT", "IMAGE", "VIDEO"]);
+const WRITE_BATCH_WINDOW_MS = 100;
+
+let stateCache = null;
+let queuedState = null;
+let pendingWriteTimer = null;
+let writeInFlight = Promise.resolve();
+let hasWriteInFlight = false;
+let lastPersistedAt = null;
+let lastPersistError = null;
 
 class ValidationError extends Error {
   constructor(issues, message = "validation_failed") {
@@ -28,7 +42,7 @@ function nowIso() {
 }
 
 function makeId(prefix) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${randomUUID()}`;
 }
 
 function issue(pathLabel, message, code) {
@@ -156,24 +170,73 @@ function defaultState() {
   };
 }
 
-function ensureStateFile() {
+function ensureStateLoaded() {
+  if (stateCache) return;
+
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(defaultState(), null, 2), "utf8");
+    const initial = defaultState();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), "utf8");
+    stateCache = initial;
+    lastPersistedAt = nowIso();
+    return;
   }
-}
 
-function readState() {
-  ensureStateFile();
   const raw = fs.readFileSync(DATA_FILE, "utf8");
   const parsed = JSON.parse(raw || "{}");
 
   // Best-effort migration from legacy storage.
-  if (Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)) {
-    return defaultState();
-  }
+  stateCache = Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)
+    ? defaultState()
+    : parsed;
+}
 
-  return parsed;
+function persistQueuedState() {
+  if (!queuedState) return;
+
+  const snapshot = queuedState;
+  queuedState = null;
+
+  writeInFlight = writeInFlight
+    .then(async () => {
+      hasWriteInFlight = true;
+      await fsp.writeFile(DATA_FILE, JSON.stringify(snapshot, null, 2), "utf8");
+      lastPersistedAt = nowIso();
+      lastPersistError = null;
+    })
+    .catch((err) => {
+      lastPersistError = String(err?.message || err);
+      logger.error("state_persist_failed", { error: lastPersistError });
+    })
+    .finally(() => {
+      hasWriteInFlight = false;
+      if (queuedState) {
+        schedulePersist();
+      }
+    });
+}
+
+function schedulePersist() {
+  if (pendingWriteTimer) return;
+
+  pendingWriteTimer = setTimeout(() => {
+    pendingWriteTimer = null;
+    persistQueuedState();
+  }, WRITE_BATCH_WINDOW_MS);
+
+  if (typeof pendingWriteTimer.unref === "function") {
+    pendingWriteTimer.unref();
+  }
+}
+
+function queueStateWrite(nextState) {
+  queuedState = nextState;
+  schedulePersist();
+}
+
+function readState() {
+  ensureStateLoaded();
+  return stateCache;
 }
 
 function writeState(state) {
@@ -181,8 +244,32 @@ function writeState(state) {
     ...state,
     updatedAt: nowIso(),
   };
-  fs.writeFileSync(DATA_FILE, JSON.stringify(next, null, 2), "utf8");
+
+  stateCache = next;
+  queueStateWrite(next);
   return next;
+}
+
+function getStorageHealth() {
+  ensureStateLoaded();
+
+  let fileSizeBytes = 0;
+  try {
+    fileSizeBytes = fs.statSync(DATA_FILE).size;
+  } catch {
+    fileSizeBytes = 0;
+  }
+
+  return {
+    dataDir: DATA_DIR,
+    dataFile: DATA_FILE,
+    fileSizeBytes,
+    writeBatchWindowMs: WRITE_BATCH_WINDOW_MS,
+    writePending: Boolean(queuedState || pendingWriteTimer),
+    writeInFlight: hasWriteInFlight,
+    lastPersistedAt,
+    lastPersistError,
+  };
 }
 
 function validateCampaignKind(kind) {
@@ -494,4 +581,5 @@ module.exports = {
   setMenuCampaign,
   toRuntimeConfig,
   normalizeAndValidateItems,
+  getStorageHealth,
 };
