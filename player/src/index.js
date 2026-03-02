@@ -30,6 +30,8 @@ function parseCli(argv) {
     configPath: process.env.IDS_CONFIG || "shared/contract/examples/config.welcome.json",
     port: Number(process.env.PLAYER_PORT || 7070),
     adminUrl: process.env.IDS_ADMIN_URL || "",
+    detectorConfigJson: process.env.IDS_DETECTOR_CONFIG || "",
+    detectorConfigFile: "",
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -52,6 +54,18 @@ function parseCli(argv) {
       continue;
     }
 
+    if (token === "--detector-config-json" && argv[i + 1]) {
+      args.detectorConfigJson = argv[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (token === "--detector-config-file" && argv[i + 1]) {
+      args.detectorConfigFile = argv[i + 1];
+      i += 1;
+      continue;
+    }
+
     if (!token.startsWith("--")) {
       args.configPath = token;
     }
@@ -69,6 +83,22 @@ const cli = parseCli(process.argv.slice(2));
 const configPath = path.resolve(process.cwd(), cli.configPath);
 const config = loadJson(configPath);
 
+let detectorConfig = {};
+if (cli.detectorConfigFile) {
+  const detectorConfigPath = path.resolve(process.cwd(), cli.detectorConfigFile);
+  detectorConfig = loadJson(detectorConfigPath);
+} else if (cli.detectorConfigJson) {
+  try {
+    detectorConfig = JSON.parse(cli.detectorConfigJson);
+  } catch (e) {
+    logger.error("detector_config_invalid_json", {
+      message: e.message,
+      source: cli.detectorConfigJson === process.env.IDS_DETECTOR_CONFIG ? "IDS_DETECTOR_CONFIG" : "--detector-config-json",
+    });
+    process.exit(2);
+  }
+}
+
 if (!normalizeRuntimeConfig(config)) {
   logger.error("config_shape_invalid", {
     message: "Expected runtime-config shape or legacy campaigns shape.",
@@ -83,4 +113,5 @@ createServer({
   config,
   port: cli.port,
   adminUrl: cli.adminUrl || undefined,
+  detectorConfig,
 });
