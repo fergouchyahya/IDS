@@ -4,6 +4,10 @@
 
 const http = require("http");
 const crypto = require("crypto");
+const { json, readJsonBody, escapeHtml } = require("../../shared/utils/http-helpers");
+const { createLogger } = require("../../shared/utils/logger");
+
+const logger = createLogger("ids-player-server");
 
 const STATE = {
   IDLE: "IDLE",
@@ -97,6 +101,15 @@ class PlayerStateMachine {
     this.inactivityTimer = null;
     this.inactivityTimeout = this.runtime.settings.inactivityTimeoutMs;
     this.lastActivityAt = Date.now();
+    this.refreshStudentIndex();
+  }
+
+  refreshStudentIndex() {
+    this.studentsByUid = new Map(
+      this.runtime.students
+        .filter((s) => s && s.nfcUid)
+        .map((s) => [String(s.nfcUid), s]),
+    );
   }
 
   setRuntimeConfig(nextRuntime) {
@@ -106,6 +119,7 @@ class PlayerStateMachine {
     const currentCampaignId = this.currentCampaign?.campaignId;
     this.runtime = normalized;
     this.inactivityTimeout = this.runtime.settings.inactivityTimeoutMs;
+    this.refreshStudentIndex();
 
     const candidates = [
       this.runtime.idleCampaign,
@@ -155,7 +169,7 @@ class PlayerStateMachine {
   findStudentByUid(nfcUid) {
     const uid = String(nfcUid || "").trim();
     if (!uid) return null;
-    return this.runtime.students.find((s) => s.nfcUid === uid) || null;
+    return this.studentsByUid.get(uid) || null;
   }
 
   advance(offset) {
@@ -170,7 +184,7 @@ class PlayerStateMachine {
     if (this.currentState !== STATE.IDLE) {
       const remainingMs = Math.max(1, this.lastActivityAt + this.inactivityTimeout - Date.now());
       this.inactivityTimer = setTimeout(() => {
-        console.log("[Player] Inactivity timeout -> returning to IDLE");
+        logger.info("inactivity_timeout", { action: "return_to_idle" });
         this.transitionToIdle();
       }, remainingMs);
     }
@@ -259,50 +273,12 @@ class PlayerStateMachine {
   }
 }
 
-function json(res, code, obj) {
-  const body = JSON.stringify(obj, null, 2);
-  res.writeHead(code, {
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(body),
-  });
-  res.end(body);
-}
-
 function html(res, code, body) {
   res.writeHead(code, {
     "Content-Type": "text/html; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
   });
   res.end(body);
-}
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 100_000) {
-        req.destroy();
-        reject(new Error("Body too large"));
-      }
-    });
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(data || "{}"));
-      } catch {
-        reject(new Error("Invalid JSON"));
-      }
-    });
-  });
-}
-
-function escapeHtml(input) {
-  return String(input)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function isMovementInputEvent(event) {
@@ -1254,16 +1230,32 @@ async function pullRuntimeConfig(adminUrl) {
 function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } = {}) {
   const sm = new PlayerStateMachine(config);
   const detectorToken = crypto.randomBytes(18).toString("hex");
+  const startedAt = Date.now();
+  const syncStatus = {
+    configured: Boolean(adminUrl),
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    lastErrorAt: null,
+    lastError: null,
+  };
 
   let syncTimer = null;
 
   async function syncFromAdmin() {
     if (!adminUrl) return;
+    syncStatus.lastAttemptAt = new Date().toISOString();
     try {
       const runtime = await pullRuntimeConfig(adminUrl);
-      sm.setRuntimeConfig(runtime);
+      const applied = sm.setRuntimeConfig(runtime);
+      if (!applied) {
+        throw new Error("invalid_runtime_config");
+      }
+      syncStatus.lastSuccessAt = new Date().toISOString();
+      syncStatus.lastError = null;
     } catch (e) {
-      console.warn(`[Player] Runtime sync failed: ${e.message}`);
+      syncStatus.lastErrorAt = new Date().toISOString();
+      syncStatus.lastError = String(e?.message || e);
+      logger.warn("runtime_sync_failed", { error: syncStatus.lastError });
     }
   }
 
@@ -1285,6 +1277,16 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } =
 
     if (req.method === "GET" && url.pathname === "/current") {
       return json(res, 200, sm.getStatus());
+    }
+
+    if (req.method === "GET" && url.pathname === "/health") {
+      return json(res, 200, {
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        uptimeMs: Date.now() - startedAt,
+        runtime: sm.getStatus(),
+        adminSync: syncStatus,
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/events") {
@@ -1377,9 +1379,11 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } =
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(`[Player] Listening on http://127.0.0.1:${port}`);
-    console.log("[Player] Flow: IDLE -> movement_detected -> MENU -> (visitor_selected|nfc_tap) -> INFO -> inactivity -> IDLE");
-    if (adminUrl) console.log(`[Player] Runtime sync from ${adminUrl}/runtime-config`);
+    logger.info("server_listening", { url: `http://127.0.0.1:${port}` });
+    logger.info("flow", {
+      value: "IDLE -> movement_detected -> MENU -> (visitor_selected|nfc_tap) -> INFO -> inactivity -> IDLE",
+    });
+    if (adminUrl) logger.info("runtime_sync_enabled", { runtimeConfigUrl: `${adminUrl}/runtime-config` });
   });
 
   return server;
