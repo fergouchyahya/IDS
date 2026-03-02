@@ -16,6 +16,150 @@ const STATE = {
   STUDENT_INFO: "STUDENT_INFO",
 };
 
+const DEFAULT_DETECTOR_CONFIG = Object.freeze({
+  analyzeEveryMs: 120,
+  movementPixelThreshold: 22,
+  foregroundDeltaThreshold: 20,
+  backgroundAlpha: 0.05,
+  minPresenceRatio: 0.03,
+  minPresenceBoxRatio: 0.10,
+  maxPresenceBoxRatio: 0.85,
+  minMotionRatio: 0.018,
+  motionStreakRequired: 2,
+  minSideMotionPixels: 18,
+  dominanceFactor: 1.45,
+  presenceStreakRequired: 3,
+  handMoveStreakRequired: 3,
+  handDirectionStreakRequired: 3,
+  menuDecisionDelayMs: 900,
+  handZoneTopRatio: 0.12,
+  handZoneBottomRatio: 0.78,
+  handZoneSideRatio: 0.24,
+  mirrorHandedness: true,
+  cooldownByEvent: {
+    movement_detected: 1700,
+    visitor_selected: 800,
+    scroll_next: 460,
+    scroll_prev: 460,
+  },
+});
+
+function normalizeDetectorConfig(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const baseCooldowns = {
+    ...DEFAULT_DETECTOR_CONFIG.cooldownByEvent,
+    ...(source.cooldownByEvent && typeof source.cooldownByEvent === "object" ? source.cooldownByEvent : {}),
+  };
+
+  const toNumber = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const toBool = (value, fallback) => (typeof value === "boolean" ? value : fallback);
+
+  const minPresenceBoxRatio = clamp(
+    toNumber(source.minPresenceBoxRatio, DEFAULT_DETECTOR_CONFIG.minPresenceBoxRatio),
+    0,
+    1,
+  );
+  const maxPresenceBoxRatio = clamp(
+    toNumber(source.maxPresenceBoxRatio, DEFAULT_DETECTOR_CONFIG.maxPresenceBoxRatio),
+    minPresenceBoxRatio,
+    1,
+  );
+  const handZoneTopRatio = clamp(
+    toNumber(source.handZoneTopRatio, DEFAULT_DETECTOR_CONFIG.handZoneTopRatio),
+    0,
+    0.95,
+  );
+  const handZoneBottomRatio = clamp(
+    toNumber(source.handZoneBottomRatio, DEFAULT_DETECTOR_CONFIG.handZoneBottomRatio),
+    handZoneTopRatio + 0.01,
+    1,
+  );
+
+  return {
+    analyzeEveryMs: Math.round(clamp(toNumber(source.analyzeEveryMs, DEFAULT_DETECTOR_CONFIG.analyzeEveryMs), 30, 1200)),
+    movementPixelThreshold: Math.round(clamp(
+      toNumber(source.movementPixelThreshold, DEFAULT_DETECTOR_CONFIG.movementPixelThreshold),
+      1,
+      255,
+    )),
+    foregroundDeltaThreshold: Math.round(clamp(
+      toNumber(source.foregroundDeltaThreshold, DEFAULT_DETECTOR_CONFIG.foregroundDeltaThreshold),
+      1,
+      255,
+    )),
+    backgroundAlpha: clamp(toNumber(source.backgroundAlpha, DEFAULT_DETECTOR_CONFIG.backgroundAlpha), 0.001, 0.35),
+    minPresenceRatio: clamp(toNumber(source.minPresenceRatio, DEFAULT_DETECTOR_CONFIG.minPresenceRatio), 0.001, 1),
+    minPresenceBoxRatio,
+    maxPresenceBoxRatio,
+    minMotionRatio: clamp(toNumber(source.minMotionRatio, DEFAULT_DETECTOR_CONFIG.minMotionRatio), 0.001, 1),
+    motionStreakRequired: Math.round(clamp(
+      toNumber(source.motionStreakRequired, DEFAULT_DETECTOR_CONFIG.motionStreakRequired),
+      1,
+      20,
+    )),
+    minSideMotionPixels: Math.round(clamp(
+      toNumber(source.minSideMotionPixels, DEFAULT_DETECTOR_CONFIG.minSideMotionPixels),
+      1,
+      2000,
+    )),
+    dominanceFactor: clamp(toNumber(source.dominanceFactor, DEFAULT_DETECTOR_CONFIG.dominanceFactor), 1, 4),
+    presenceStreakRequired: Math.round(clamp(
+      toNumber(source.presenceStreakRequired, DEFAULT_DETECTOR_CONFIG.presenceStreakRequired),
+      1,
+      20,
+    )),
+    handMoveStreakRequired: Math.round(clamp(
+      toNumber(source.handMoveStreakRequired, DEFAULT_DETECTOR_CONFIG.handMoveStreakRequired),
+      1,
+      20,
+    )),
+    handDirectionStreakRequired: Math.round(clamp(
+      toNumber(source.handDirectionStreakRequired, DEFAULT_DETECTOR_CONFIG.handDirectionStreakRequired),
+      1,
+      20,
+    )),
+    menuDecisionDelayMs: Math.round(clamp(
+      toNumber(source.menuDecisionDelayMs, DEFAULT_DETECTOR_CONFIG.menuDecisionDelayMs),
+      0,
+      12000,
+    )),
+    handZoneTopRatio,
+    handZoneBottomRatio,
+    handZoneSideRatio: clamp(
+      toNumber(source.handZoneSideRatio, DEFAULT_DETECTOR_CONFIG.handZoneSideRatio),
+      0.05,
+      0.45,
+    ),
+    mirrorHandedness: toBool(source.mirrorHandedness, DEFAULT_DETECTOR_CONFIG.mirrorHandedness),
+    cooldownByEvent: {
+      movement_detected: Math.round(clamp(
+        toNumber(baseCooldowns.movement_detected, DEFAULT_DETECTOR_CONFIG.cooldownByEvent.movement_detected),
+        0,
+        10000,
+      )),
+      visitor_selected: Math.round(clamp(
+        toNumber(baseCooldowns.visitor_selected, DEFAULT_DETECTOR_CONFIG.cooldownByEvent.visitor_selected),
+        0,
+        10000,
+      )),
+      scroll_next: Math.round(clamp(
+        toNumber(baseCooldowns.scroll_next, DEFAULT_DETECTOR_CONFIG.cooldownByEvent.scroll_next),
+        0,
+        10000,
+      )),
+      scroll_prev: Math.round(clamp(
+        toNumber(baseCooldowns.scroll_prev, DEFAULT_DETECTOR_CONFIG.cooldownByEvent.scroll_prev),
+        0,
+        10000,
+      )),
+    },
+  };
+}
+
 function sortItems(items) {
   return [...(Array.isArray(items) ? items : [])].sort((a, b) => (a.order || 0) - (b.order || 0));
 }
@@ -455,6 +599,7 @@ function renderUI(sm, options = {}) {
   const stateClass = getStateVisualClass(status.state);
   const forceDebug = options.forceDebug === true;
   const detectorToken = String(options.detectorToken || "");
+  const detectorConfig = normalizeDetectorConfig(options.detectorConfig);
 
   return `<!doctype html>
 <html>
@@ -995,6 +1140,8 @@ function renderUI(sm, options = {}) {
       });
     }
 
+    const detectorConfig = ${JSON.stringify(detectorConfig)};
+
     async function initMovementDetector() {
       const token = ${JSON.stringify(detectorToken)};
       const currentState = ${JSON.stringify(status.state)};
@@ -1051,21 +1198,28 @@ function renderUI(sm, options = {}) {
       let handMoveStreak = 0;
       let rightHandStreak = 0;
       let leftHandStreak = 0;
-      const analyzeEveryMs = 120;
-      const movementPixelThreshold = 22;
-      const foregroundDeltaThreshold = 20;
-      const backgroundAlpha = 0.05;
-      const minPresenceRatio = 0.035;
-      const minPresenceBoxRatio = 0.10;
-      const maxPresenceBoxRatio = 0.72;
-      const minSideMotionPixels = 24;
-      const cooldownByEvent = {
-        movement_detected: 1700,
-        visitor_selected: 800,
-        scroll_next: 460,
-        scroll_prev: 460,
-      };
-      const mirrorHandedness = true;
+      let motionStreak = 0;
+      let menuReadyAt = Number.POSITIVE_INFINITY;
+      const analyzeEveryMs = detectorConfig.analyzeEveryMs;
+      const movementPixelThreshold = detectorConfig.movementPixelThreshold;
+      const foregroundDeltaThreshold = detectorConfig.foregroundDeltaThreshold;
+      const backgroundAlpha = detectorConfig.backgroundAlpha;
+      const minPresenceRatio = detectorConfig.minPresenceRatio;
+      const minPresenceBoxRatio = detectorConfig.minPresenceBoxRatio;
+      const maxPresenceBoxRatio = detectorConfig.maxPresenceBoxRatio;
+      const minMotionRatio = detectorConfig.minMotionRatio;
+      const motionStreakRequired = detectorConfig.motionStreakRequired;
+      const minSideMotionPixels = detectorConfig.minSideMotionPixels;
+      const dominanceFactor = detectorConfig.dominanceFactor;
+      const presenceStreakRequired = detectorConfig.presenceStreakRequired;
+      const handMoveStreakRequired = detectorConfig.handMoveStreakRequired;
+      const handDirectionStreakRequired = detectorConfig.handDirectionStreakRequired;
+      const menuDecisionDelayMs = detectorConfig.menuDecisionDelayMs;
+      const handZoneTopRatio = detectorConfig.handZoneTopRatio;
+      const handZoneBottomRatio = detectorConfig.handZoneBottomRatio;
+      const handZoneSideRatio = detectorConfig.handZoneSideRatio;
+      const cooldownByEvent = detectorConfig.cooldownByEvent;
+      const mirrorHandedness = detectorConfig.mirrorHandedness;
 
       function analyze(now) {
         if (!camEl.videoWidth || !camEl.videoHeight) {
@@ -1094,8 +1248,9 @@ function renderUI(sm, options = {}) {
 
         let changed = 0;
         let samples = 0;
-        let leftChanged = 0;
-        let rightChanged = 0;
+        let leftHandZoneChanged = 0;
+        let rightHandZoneChanged = 0;
+        let handZoneChanged = 0;
         let foregroundPixels = 0;
         let minX = hiddenCanvas.width;
         let minY = hiddenCanvas.height;
@@ -1106,6 +1261,11 @@ function renderUI(sm, options = {}) {
           const pixelIndex = i / 4;
           const x = pixelIndex % hiddenCanvas.width;
           const y = Math.floor(pixelIndex / hiddenCanvas.width);
+          const xRatio = x / hiddenCanvas.width;
+          const yRatio = y / hiddenCanvas.height;
+          const inHandHeightBand = yRatio >= handZoneTopRatio && yRatio <= handZoneBottomRatio;
+          const inLeftHandZone = inHandHeightBand && xRatio <= handZoneSideRatio;
+          const inRightHandZone = inHandHeightBand && xRatio >= (1 - handZoneSideRatio);
 
           const dr = Math.abs(frame[i] - lastFrame[i]);
           const dg = Math.abs(frame[i + 1] - lastFrame[i + 1]);
@@ -1114,8 +1274,13 @@ function renderUI(sm, options = {}) {
 
           if (delta > movementPixelThreshold) {
             changed += 1;
-            if (x < hiddenCanvas.width / 2) leftChanged += 1;
-            else rightChanged += 1;
+            if (inLeftHandZone) {
+              leftHandZoneChanged += 1;
+              handZoneChanged += 1;
+            } else if (inRightHandZone) {
+              rightHandZoneChanged += 1;
+              handZoneChanged += 1;
+            }
           }
 
           const bdr = Math.abs(frame[i] - backgroundFrame[i]);
@@ -1139,24 +1304,29 @@ function renderUI(sm, options = {}) {
         }
 
         const presenceRatio = samples > 0 ? foregroundPixels / samples : 0;
+        const motionRatio = samples > 0 ? changed / samples : 0;
         let presenceBoxRatio = 0;
         if (foregroundPixels > 0 && maxX >= minX && maxY >= minY) {
           const boxArea = (maxX - minX + 1) * (maxY - minY + 1);
           presenceBoxRatio = boxArea / (hiddenCanvas.width * hiddenCanvas.height);
         }
 
-        const hasPresence = presenceRatio >= minPresenceRatio
+        const hasForegroundPresence = presenceRatio >= minPresenceRatio
           && presenceBoxRatio >= minPresenceBoxRatio
           && presenceBoxRatio <= maxPresenceBoxRatio;
+        if (motionRatio >= minMotionRatio) motionStreak += 1;
+        else motionStreak = Math.max(0, motionStreak - 1);
+        const hasMotionPresence = motionStreak >= motionStreakRequired;
+        const hasPresence = hasForegroundPresence || hasMotionPresence;
         if (hasPresence) presenceStreak += 1;
         else presenceStreak = Math.max(0, presenceStreak - 1);
 
-        const hasAnyHandMotion = changed >= minSideMotionPixels;
+        const hasAnyHandMotion = handZoneChanged >= minSideMotionPixels;
         if (hasAnyHandMotion) handMoveStreak += 1;
         else handMoveStreak = Math.max(0, handMoveStreak - 1);
 
-        const dominantLeft = leftChanged >= minSideMotionPixels && leftChanged > rightChanged * 1.15;
-        const dominantRight = rightChanged >= minSideMotionPixels && rightChanged > leftChanged * 1.15;
+        const dominantLeft = leftHandZoneChanged >= minSideMotionPixels && leftHandZoneChanged > rightHandZoneChanged * dominanceFactor;
+        const dominantRight = rightHandZoneChanged >= minSideMotionPixels && rightHandZoneChanged > leftHandZoneChanged * dominanceFactor;
         const rightHandDetected = mirrorHandedness ? dominantLeft : dominantRight;
         const leftHandDetected = mirrorHandedness ? dominantRight : dominantLeft;
 
@@ -1176,23 +1346,30 @@ function renderUI(sm, options = {}) {
         let handSide = null;
 
         if (currentState === 'IDLE') {
-          if (presenceStreak >= 3) {
+          menuReadyAt = Number.POSITIVE_INFINITY;
+          if (presenceStreak >= presenceStreakRequired) {
             eventType = 'movement_detected';
-            detectorLabel = 'Presence detected';
+            detectorLabel = hasForegroundPresence ? 'Presence detected' : 'Motion detected';
           } else {
             detectorLabel = 'Waiting for presence';
           }
         } else if (currentState === 'MENU') {
-          if (handMoveStreak >= 2) {
+          if (!Number.isFinite(menuReadyAt)) {
+            menuReadyAt = now + menuDecisionDelayMs;
+          }
+          if (now < menuReadyAt) {
+            detectorLabel = 'Choose visitor or NFC...';
+          } else if (handMoveStreak >= handMoveStreakRequired) {
             eventType = 'visitor_selected';
             detectorLabel = 'Hand movement detected';
           }
         } else if (currentState === 'VISITOR_INFO' || currentState === 'STUDENT_INFO') {
-          if (rightHandDetected && rightHandStreak >= 2) {
+          menuReadyAt = Number.POSITIVE_INFINITY;
+          if (rightHandDetected && rightHandStreak >= handDirectionStreakRequired) {
             eventType = 'scroll_next';
             handSide = 'right';
             detectorLabel = 'Right hand -> next';
-          } else if (leftHandDetected && leftHandStreak >= 2) {
+          } else if (leftHandDetected && leftHandStreak >= handDirectionStreakRequired) {
             eventType = 'scroll_prev';
             handSide = 'left';
             detectorLabel = 'Left hand -> previous';
@@ -1261,9 +1438,10 @@ async function pullStudentCampaign(adminUrl, nfcUid) {
   return res.json();
 }
 
-function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } = {}) {
+function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000, detectorConfig } = {}) {
   const sm = new PlayerStateMachine(config);
   const detectorToken = crypto.randomBytes(18).toString("hex");
+  const resolvedDetectorConfig = normalizeDetectorConfig(detectorConfig);
   const startedAt = Date.now();
   const syncStatus = {
     configured: Boolean(adminUrl),
@@ -1306,6 +1484,7 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } =
       return html(res, 200, renderUI(sm, {
         forceDebug: url.searchParams.get("debug") === "1",
         detectorToken,
+        detectorConfig: resolvedDetectorConfig,
       }));
     }
 
@@ -1451,6 +1630,7 @@ module.exports = {
   PlayerStateMachine,
   STATE,
   normalizeRuntimeConfig,
+  normalizeDetectorConfig,
   renderUI,
   isMovementInputEvent,
   isDetectorAllowedEvent,
