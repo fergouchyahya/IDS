@@ -166,6 +166,7 @@ function defaultState() {
         },
       },
     ],
+    studentProfiles: [],
     updatedAt: nowIso(),
   };
 }
@@ -189,6 +190,13 @@ function ensureStateLoaded() {
   stateCache = Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)
     ? defaultState()
     : parsed;
+
+  if (!Array.isArray(stateCache.students)) {
+    stateCache.students = [];
+  }
+  if (!Array.isArray(stateCache.studentProfiles)) {
+    stateCache.studentProfiles = [];
+  }
 }
 
 function persistQueuedState() {
@@ -499,6 +507,145 @@ function normalizeStudentPayload({ nfcUid, name, items }) {
   };
 }
 
+function isSafeImageReference(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  if (normalized.startsWith("/media/")) return true;
+
+  try {
+    const parsed = new URL(normalized);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeStudentProfilePayload(profile, pathPrefix = "students[]") {
+  const nfcUid = String(profile?.nfcUid || "").trim();
+  const displayName = String(profile?.displayName || profile?.name || "").trim();
+  const timetableImageUrl = String(profile?.timetableImageUrl || "").trim();
+  const nextClassText = String(profile?.nextClassText || "").trim();
+  const issues = [];
+
+  if (!nfcUid) {
+    issues.push(issue(`${pathPrefix}.nfcUid`, "nfcUid is required", "required"));
+  }
+  if (!displayName) {
+    issues.push(issue(`${pathPrefix}.displayName`, "displayName is required", "required"));
+  }
+  if (!timetableImageUrl) {
+    issues.push(issue(`${pathPrefix}.timetableImageUrl`, "timetableImageUrl is required", "required"));
+  } else if (!isSafeImageReference(timetableImageUrl)) {
+    issues.push(issue(`${pathPrefix}.timetableImageUrl`, "timetableImageUrl must be /media/* or http(s) URL", "invalid_url"));
+  }
+
+  throwIfIssues(issues);
+  return {
+    nfcUid,
+    displayName,
+    timetableImageUrl,
+    nextClassText,
+    updatedAt: nowIso(),
+  };
+}
+
+function buildGeneratedStudentCampaign(profile) {
+  const headline = `Welcome ${profile.displayName}`;
+  const nextClassLine = profile.nextClassText || "Please check the timetable shown.";
+  return {
+    campaignId: `student-${profile.nfcUid}`,
+    campaignName: `${profile.displayName} Info`,
+    kind: "student",
+    updatedAt: nowIso(),
+    items: normalizeAndValidateItems([
+      {
+        contentId: "student-auto-1",
+        type: "TEXT",
+        data: `${headline}\nYour personal info is ready`,
+        order: 1,
+        durationSec: 20,
+      },
+      {
+        contentId: "student-auto-2",
+        type: "IMAGE",
+        data: profile.timetableImageUrl,
+        order: 2,
+        durationSec: 25,
+      },
+      {
+        contentId: "student-auto-3",
+        type: "TEXT",
+        data: nextClassLine,
+        order: 3,
+        durationSec: 20,
+      },
+    ], "items"),
+  };
+}
+
+function importStudentProfiles(payload) {
+  const state = readState();
+  const inputStudents = Array.isArray(payload?.students) ? payload.students : null;
+  if (!inputStudents) {
+    throw new ValidationError([issue("students", "students must be an array", "invalid_type")]);
+  }
+
+  const normalized = [];
+  const seen = new Set();
+  const issues = [];
+
+  inputStudents.forEach((entry, idx) => {
+    const prefix = `students[${idx}]`;
+    try {
+      const profile = normalizeStudentProfilePayload(entry, prefix);
+      if (seen.has(profile.nfcUid)) {
+        issues.push(issue(`${prefix}.nfcUid`, "nfcUid must be unique", "duplicate"));
+      } else {
+        seen.add(profile.nfcUid);
+        normalized.push(profile);
+      }
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        issues.push(...err.issues);
+      } else {
+        issues.push(issue(prefix, err?.message || "invalid_profile", "invalid_profile"));
+      }
+    }
+  });
+
+  throwIfIssues(issues);
+  state.studentProfiles = normalized;
+  return writeState(state);
+}
+
+function getGeneratedStudentCampaignByUid(nfcUid) {
+  const state = readState();
+  const uid = String(nfcUid || "").trim();
+  if (!uid) {
+    throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
+  }
+
+  const profile = state.studentProfiles.find((item) => item.nfcUid === uid) || null;
+  if (!profile) {
+    throw new ValidationError([issue("nfcUid", "Student profile not found", "not_found")]);
+  }
+
+  return {
+    nfcUid: profile.nfcUid,
+    name: profile.displayName,
+    campaign: buildGeneratedStudentCampaign(profile),
+  };
+}
+
+function listGeneratedStudentCampaigns() {
+  const state = readState();
+  return (state.studentProfiles || []).map((profile) => ({
+    nfcUid: profile.nfcUid,
+    name: profile.displayName,
+    campaign: buildGeneratedStudentCampaign(profile),
+  }));
+}
+
 function upsertStudent(payload) {
   const state = readState();
   const normalized = normalizeStudentPayload(payload || {});
@@ -579,6 +726,9 @@ module.exports = {
   upsertStudent,
   deleteStudent,
   setMenuCampaign,
+  importStudentProfiles,
+  getGeneratedStudentCampaignByUid,
+  listGeneratedStudentCampaigns,
   toRuntimeConfig,
   normalizeAndValidateItems,
   getStorageHealth,

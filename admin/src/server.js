@@ -56,7 +56,8 @@ function readRawBody(req, maxBytes = MAX_UPLOAD_SIZE + 1024 * 1024) {
 
 function sendValidationError(res, err) {
   if (err instanceof storage.ValidationError) {
-    return json(res, 400, {
+    const statusCode = err.issues.some((item) => item?.code === "not_found") ? 404 : 400;
+    return json(res, statusCode, {
       error: "validation_failed",
       issues: err.issues,
     });
