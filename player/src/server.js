@@ -172,6 +172,29 @@ class PlayerStateMachine {
     return this.studentsByUid.get(uid) || null;
   }
 
+  upsertRuntimeStudent(student) {
+    const uid = String(student?.nfcUid || "").trim();
+    if (!uid || !student?.campaign) return false;
+
+    const normalizedStudent = {
+      nfcUid: uid,
+      name: String(student?.name || "").trim() || uid,
+      campaign: {
+        ...student.campaign,
+        items: sortItems(student.campaign.items),
+      },
+    };
+
+    const index = this.runtime.students.findIndex((item) => item.nfcUid === uid);
+    if (index >= 0) {
+      this.runtime.students[index] = normalizedStudent;
+    } else {
+      this.runtime.students.push(normalizedStudent);
+    }
+    this.refreshStudentIndex();
+    return true;
+  }
+
   advance(offset) {
     const items = this.currentCampaign?.items || [];
     if (items.length <= 1) return false;
@@ -1227,6 +1250,17 @@ async function pullRuntimeConfig(adminUrl) {
   return res.json();
 }
 
+async function pullStudentCampaign(adminUrl, nfcUid) {
+  const uid = String(nfcUid || "").trim();
+  if (!uid) return null;
+
+  const endpoint = `${adminUrl.replace(/\/$/, "")}/api/students/${encodeURIComponent(uid)}/campaign`;
+  const res = await fetch(endpoint);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`student-campaign fetch failed: ${res.status}`);
+  return res.json();
+}
+
 function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } = {}) {
   const sm = new PlayerStateMachine(config);
   const detectorToken = crypto.randomBytes(18).toString("hex");
@@ -1297,6 +1331,8 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } =
         return json(res, 400, { error: e.message });
       }
 
+      const normalizedEvent = sm.normalizeEvent(event);
+
       if (isMovementInputEvent(event)) {
         return json(res, 403, {
           error: "movement_event_requires_detector",
@@ -1304,7 +1340,28 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000 } =
         });
       }
 
-      if (adminUrl) await syncFromAdmin();
+      if (adminUrl) {
+        await syncFromAdmin();
+
+        if (normalizedEvent === "nfc_tap" && sm.currentState === STATE.MENU) {
+          const uid = String(event?.nfcUid || event?.studentId || event?.uid || "").trim();
+          if (uid) {
+            try {
+              const generated = await pullStudentCampaign(adminUrl, uid);
+              if (generated?.campaign) {
+                sm.upsertRuntimeStudent(generated);
+                logger.info("student_campaign_loaded", { uid });
+              }
+            } catch (e) {
+              logger.warn("student_campaign_load_failed", {
+                uid,
+                error: String(e?.message || e),
+              });
+            }
+          }
+        }
+      }
+
       return json(res, 200, sm.handleEvent(event));
     }
 
