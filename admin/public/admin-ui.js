@@ -87,17 +87,67 @@ function makeBlockByType(type, order) {
   return block;
 }
 
+function getGeneratedStudentCampaigns() {
+  return Array.isArray(state?.generatedStudentCampaigns) ? state.generatedStudentCampaigns : [];
+}
+
+function findStudentCampaignByUid(uid) {
+  const key = String(uid || "").trim();
+  if (!key) return null;
+
+  const manual = (state?.students || []).find((s) => s.nfcUid === key);
+  if (manual && manual.campaign) {
+    return {
+      source: "manual",
+      nfcUid: key,
+      name: manual.name || "Unnamed student",
+      campaign: manual.campaign,
+    };
+  }
+
+  const generated = getGeneratedStudentCampaigns().find((item) => item.nfcUid === key);
+  if (generated && generated.campaign) {
+    return {
+      source: "generated",
+      nfcUid: key,
+      name: generated.name || "Generated student",
+      campaign: generated.campaign,
+    };
+  }
+
+  return null;
+}
+
 function getCampaignsByType(type) {
   if (!state) return [];
   if (type === "idle") return state.idleCampaigns || [];
   if (type === "visitor") return state.visitorCampaigns || [];
-  if (type === "student") return (state.students || []).map((s) => ({
-    campaignId: s.campaign?.campaignId || `student-${s.nfcUid}`,
-    campaignName: s.name,
-    kind: "student",
-    nfcUid: s.nfcUid,
-    items: s.campaign?.items || [],
-  }));
+  if (type === "student") {
+    const manual = (state.students || []).map((s) => ({
+      campaignId: s.campaign?.campaignId || `student-${s.nfcUid}`,
+      campaignName: s.name,
+      kind: "student",
+      nfcUid: s.nfcUid,
+      items: s.campaign?.items || [],
+      updatedAt: s.updatedAt || s.campaign?.updatedAt || state.updatedAt || "",
+      source: "manual",
+    }));
+
+    const existing = new Set(manual.map((item) => item.nfcUid));
+    const generated = getGeneratedStudentCampaigns()
+      .filter((item) => !existing.has(item.nfcUid))
+      .map((item) => ({
+        campaignId: item.campaign?.campaignId || `student-${item.nfcUid}`,
+        campaignName: item.name,
+        kind: "student",
+        nfcUid: item.nfcUid,
+        items: item.campaign?.items || [],
+        updatedAt: item.campaign?.updatedAt || state.updatedAt || "",
+        source: "generated",
+      }));
+
+    return [...manual, ...generated];
+  }
   return [];
 }
 
@@ -150,15 +200,16 @@ function normalizeCampaignCards() {
     });
   }
 
-  for (const student of state.students || []) {
+  for (const student of getCampaignsByType("student")) {
+    const isGenerated = student.source === "generated";
     cards.push({
       kind: "student",
       id: student.nfcUid,
-      name: student.name || "Unnamed student profile",
+      name: student.campaignName || "Unnamed student profile",
       status: "live",
-      items: Array.isArray(student.campaign?.items) ? student.campaign.items : [],
-      updatedAt: student.updatedAt || student.campaign?.updatedAt || state.updatedAt || "",
-      subtitle: `UID: ${student.nfcUid || "n/a"}`,
+      items: Array.isArray(student.items) ? student.items : [],
+      updatedAt: student.updatedAt || state.updatedAt || "",
+      subtitle: `UID: ${student.nfcUid || "n/a"}${isGenerated ? " | Auto-generated" : ""}`,
     });
   }
 
@@ -277,7 +328,7 @@ function duplicateCampaignFromOverview(type, id) {
   selectedBlockIndex = null;
 
   if (type === "student") {
-    const student = (state.students || []).find((s) => s.nfcUid === id);
+    const student = findStudentCampaignByUid(id);
     if (!student) {
       setStatus("Student campaign not found", false);
       return;
@@ -525,7 +576,7 @@ function loadCampaignToEditor(type, campaignId) {
       builder.blocks = Array.isArray(state.menuCampaign.items) ? state.menuCampaign.items.map((b) => ({ ...b })) : [defaultBlock(1)];
     }
   } else if (type === "student") {
-    const student = (state.students || []).find((s) => s.nfcUid === campaignId);
+    const student = findStudentCampaignByUid(campaignId);
     if (student) {
       builder.campaignId = `student-${campaignId}`;
       builder.type = "student";
@@ -1129,14 +1180,16 @@ function renderLists() {
     `)
     .join("");
 
-  const students = (state.students || [])
+  const students = getCampaignsByType("student")
     .map((s) => `
       <div class="item">
-        <div><b>${escapeHtml(s.name)}</b> <span class="mono">${escapeHtml(s.nfcUid)}</span></div>
-        <div class="mono">${s.campaign?.items?.length || 0} block(s)</div>
+        <div><b>${escapeHtml(s.campaignName || "Student")}</b> <span class="mono">${escapeHtml(s.nfcUid)}</span></div>
+        <div class="mono">${s.items?.length || 0} block(s)${s.source === "generated" ? " | Auto" : ""}</div>
         <div class="row">
           <button class="ghost" onclick="loadExistingStudent('${escapeHtml(s.nfcUid)}')">Load in builder</button>
-          <button class="danger" onclick="deleteStudentUI('${escapeHtml(s.nfcUid)}')">Delete</button>
+          ${s.source === "manual"
+    ? `<button class="danger" onclick="deleteStudentUI('${escapeHtml(s.nfcUid)}')">Delete</button>`
+    : `<button class="ghost" disabled title="Managed by import">Imported</button>`}
         </div>
       </div>
     `)
@@ -1504,7 +1557,7 @@ function loadDuplicateSource() {
   }
 
   if (builder.type === "student") {
-    const student = (state.students || []).find((s) => s.nfcUid === builder.sourceId);
+    const student = findStudentCampaignByUid(builder.sourceId);
     if (!student) {
       setStatus("Selected student source not found", false);
       return;
@@ -1539,7 +1592,7 @@ function loadExistingCampaign(type, campaignId) {
 }
 
 function loadExistingStudent(uid) {
-  const student = (state.students || []).find((s) => s.nfcUid === uid);
+  const student = findStudentCampaignByUid(uid);
   if (!student) return;
 
   builder.mode = "duplicate";

@@ -49,13 +49,19 @@ function createAdminRouter(deps) {
           idleCampaigns: state.idleCampaigns.length,
           visitorCampaigns: state.visitorCampaigns.length,
           students: state.students.length,
+          studentProfiles: state.studentProfiles.length,
         },
       });
     }
 
     if (req.method === "GET" && url.pathname === "/api/state") {
       const state = storage.readState();
-      return json(res, 200, { state });
+      return json(res, 200, {
+        state: {
+          ...state,
+          generatedStudentCampaigns: storage.listGeneratedStudentCampaigns(),
+        },
+      });
     }
 
     if (req.method === "GET" && url.pathname === "/runtime-config") {
@@ -179,6 +185,30 @@ function createAdminRouter(deps) {
         const body = await readJsonBody(req);
         const state = storage.upsertStudent(body);
         return json(res, 200, { state });
+      } catch (e) {
+        return sendValidationError(res, e);
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/students/import") {
+      try {
+        const body = await readJsonBody(req);
+        const state = storage.importStudentProfiles(body);
+        return json(res, 200, {
+          state,
+          imported: state.studentProfiles.length,
+        });
+      } catch (e) {
+        return sendValidationError(res, e);
+      }
+    }
+
+    if (req.method === "GET" && /^\/api\/students\/[^/]+\/campaign$/.test(url.pathname)) {
+      const parts = url.pathname.split("/");
+      const uid = decodeURIComponent(parts[3] || "");
+      try {
+        const generated = storage.getGeneratedStudentCampaignByUid(uid);
+        return json(res, 200, generated);
       } catch (e) {
         return sendValidationError(res, e);
       }
