@@ -1,4 +1,4 @@
-.PHONY: install validate test run-admin run-player run-player-static
+.PHONY: install validate test test-all verify-all run-admin run-player run-player-static
 
 install:
 	npm --prefix admin install
@@ -11,6 +11,11 @@ validate:
 test:
 	npm --prefix admin test
 	npm --prefix player test
+
+test-all:
+	./scripts/verify-all.sh
+
+verify-all: test-all
 
 run-admin:
 	node admin/src/index.js
