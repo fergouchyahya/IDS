@@ -1,363 +1,41 @@
 /**
- * IDS Admin — JSON state storage.
+ * IDS Admin JSON state storage facade.
  *
- * Lightweight by design for Raspberry Pi demo use.
- * This can be swapped later with SQLite without changing API contracts.
+ * Responsibilities:
+ * - Expose stable storage API used by handlers/services.
+ * - Coordinate repository, validators and runtime mapper modules.
  */
 
-const fs = require("fs");
-const fsp = fs.promises;
-const path = require("path");
-const { randomUUID } = require("crypto");
-const { createLogger } = require("../../shared/utils/logger");
+const {
+  ValidationError,
+  readState,
+  writeState,
+  getStorageHealth,
+  nowIso,
+  makeId,
+  issue,
+  throwIfIssues,
+} = require("./storage/repository");
+const {
+  validateCampaignKind,
+  getCampaignListByKind,
+  normalizeAndValidateItems,
+  validateCampaignName,
+  normalizeStudentPayload,
+  normalizeStudentProfilePayload,
+} = require("./storage/validators");
+const {
+  getGeneratedStudentCampaignByUid: mapGeneratedStudentCampaignByUid,
+  listGeneratedStudentCampaigns: mapGeneratedStudentCampaigns,
+  toRuntimeConfig,
+} = require("./storage/runtime-mapper");
 
-const logger = createLogger("ids-admin-storage");
-
-const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
-  ? path.resolve(process.env.IDS_ADMIN_DATA_DIR)
-  : path.resolve(__dirname, "../data");
-const DATA_FILE = path.join(DATA_DIR, "state.json");
-
-const ALLOWED_ITEM_TYPES = new Set(["TEXT", "IMAGE", "VIDEO"]);
-const WRITE_BATCH_WINDOW_MS = 100;
-
-let stateCache = null;
-let queuedState = null;
-let pendingWriteTimer = null;
-let writeInFlight = Promise.resolve();
-let hasWriteInFlight = false;
-let lastPersistedAt = null;
-let lastPersistError = null;
-
-class ValidationError extends Error {
-  constructor(issues, message = "validation_failed") {
-    super(message);
-    this.name = "ValidationError";
-    this.issues = Array.isArray(issues) ? issues : [];
-  }
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function makeId(prefix) {
-  return `${prefix}-${randomUUID()}`;
-}
-
-function issue(pathLabel, message, code) {
-  return {
-    path: pathLabel,
-    message,
-    code,
-  };
-}
-
-function throwIfIssues(issues) {
-  if (issues.length > 0) {
-    throw new ValidationError(issues);
-  }
-}
-
-function defaultMenuCampaign() {
-  return {
-    campaignId: "menu-default",
-    campaignName: "Menu",
-    kind: "menu",
-    updatedAt: nowIso(),
-    items: [
-      {
-        contentId: "menu-1",
-        type: "TEXT",
-        data: "Are you Student or Visitor?",
-        order: 1,
-        durationSec: 60,
-      },
-    ],
-  };
-}
-
-function defaultState() {
-  const idleCampaignId = "idle-default";
-  const visitorCampaignId = "visitor-default";
-
-  return {
-    settings: {
-      inactivityTimeoutMs: 10000,
-    },
-    active: {
-      idleCampaignId,
-      visitorCampaignId,
-    },
-    menuCampaign: defaultMenuCampaign(),
-    idleCampaigns: [
-      {
-        campaignId: idleCampaignId,
-        campaignName: "Default Idle",
-        kind: "idle",
-        updatedAt: nowIso(),
-        items: [
-          {
-            contentId: "idle-1",
-            type: "TEXT",
-            data: "Welcome to the school",
-            order: 1,
-            durationSec: 120,
-          },
-          {
-            contentId: "idle-2",
-            type: "TEXT",
-            data: "General school information",
-            order: 2,
-            durationSec: 120,
-          },
-        ],
-      },
-    ],
-    visitorCampaigns: [
-      {
-        campaignId: visitorCampaignId,
-        campaignName: "Default Visitor",
-        kind: "visitor",
-        updatedAt: nowIso(),
-        items: [
-          {
-            contentId: "visitor-1",
-            type: "TEXT",
-            data: "Visitor information page 1",
-            order: 1,
-            durationSec: 45,
-          },
-          {
-            contentId: "visitor-2",
-            type: "TEXT",
-            data: "Visitor information page 2",
-            order: 2,
-            durationSec: 45,
-          },
-        ],
-      },
-    ],
-    students: [
-      {
-        nfcUid: "demo-uid-001",
-        name: "Demo Student",
-        campaign: {
-          campaignId: "student-demo-001",
-          campaignName: "Demo Student Info",
-          kind: "student",
-          updatedAt: nowIso(),
-          items: [
-            {
-              contentId: "student-1",
-              type: "TEXT",
-              data: "Hi Demo Student\\nTimetable: Math at 09:00",
-              order: 1,
-              durationSec: 30,
-            },
-            {
-              contentId: "student-2",
-              type: "TEXT",
-              data: "Room: A204\\nNext class: Physics",
-              order: 2,
-              durationSec: 30,
-            },
-          ],
-        },
-      },
-    ],
-    studentProfiles: [],
-    updatedAt: nowIso(),
-  };
-}
-
-function ensureStateLoaded() {
-  if (stateCache) return;
-
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DATA_FILE)) {
-    const initial = defaultState();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), "utf8");
-    stateCache = initial;
-    lastPersistedAt = nowIso();
-    return;
-  }
-
-  const raw = fs.readFileSync(DATA_FILE, "utf8");
-  const parsed = JSON.parse(raw || "{}");
-
-  // Best-effort migration from legacy storage.
-  stateCache = Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)
-    ? defaultState()
-    : parsed;
-
-  if (!Array.isArray(stateCache.students)) {
-    stateCache.students = [];
-  }
-  if (!Array.isArray(stateCache.studentProfiles)) {
-    stateCache.studentProfiles = [];
-  }
-}
-
-function persistQueuedState() {
-  if (!queuedState) return;
-
-  const snapshot = queuedState;
-  queuedState = null;
-
-  writeInFlight = writeInFlight
-    .then(async () => {
-      hasWriteInFlight = true;
-      await fsp.writeFile(DATA_FILE, JSON.stringify(snapshot, null, 2), "utf8");
-      lastPersistedAt = nowIso();
-      lastPersistError = null;
-    })
-    .catch((err) => {
-      lastPersistError = String(err?.message || err);
-      logger.error("state_persist_failed", { error: lastPersistError });
-    })
-    .finally(() => {
-      hasWriteInFlight = false;
-      if (queuedState) {
-        schedulePersist();
-      }
-    });
-}
-
-function schedulePersist() {
-  if (pendingWriteTimer) return;
-
-  pendingWriteTimer = setTimeout(() => {
-    pendingWriteTimer = null;
-    persistQueuedState();
-  }, WRITE_BATCH_WINDOW_MS);
-
-  if (typeof pendingWriteTimer.unref === "function") {
-    pendingWriteTimer.unref();
-  }
-}
-
-function queueStateWrite(nextState) {
-  queuedState = nextState;
-  schedulePersist();
-}
-
-function readState() {
-  ensureStateLoaded();
-  return stateCache;
-}
-
-function writeState(state) {
-  const next = {
-    ...state,
-    updatedAt: nowIso(),
-  };
-
-  stateCache = next;
-  queueStateWrite(next);
-  return next;
-}
-
-function getStorageHealth() {
-  ensureStateLoaded();
-
-  let fileSizeBytes = 0;
-  try {
-    fileSizeBytes = fs.statSync(DATA_FILE).size;
-  } catch {
-    fileSizeBytes = 0;
-  }
-
-  return {
-    dataDir: DATA_DIR,
-    dataFile: DATA_FILE,
-    fileSizeBytes,
-    writeBatchWindowMs: WRITE_BATCH_WINDOW_MS,
-    writePending: Boolean(queuedState || pendingWriteTimer),
-    writeInFlight: hasWriteInFlight,
-    lastPersistedAt,
-    lastPersistError,
-  };
-}
-
-function validateCampaignKind(kind) {
-  return kind === "idle" || kind === "visitor";
-}
-
-function getCampaignListByKind(state, kind) {
-  return kind === "idle" ? state.idleCampaigns : state.visitorCampaigns;
-}
-
-function normalizeAndValidateItems(items, pathPrefix = "items") {
-  const issues = [];
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new ValidationError([
-      issue(pathPrefix, "At least one content block is required", "required"),
-    ]);
-  }
-
-  const seenContentIds = new Set();
-  const normalized = items.map((item, idx) => {
-    const currentPath = `${pathPrefix}[${idx}]`;
-    const contentIdRaw = String(item?.contentId || "").trim();
-    const typeRaw = String(item?.type || "").trim().toUpperCase();
-    const dataRaw = typeof item?.data === "string" ? item.data.trim() : "";
-    const orderRaw = Number(item?.order);
-    const durationRaw = Number(item?.durationSec);
-
-    if (!contentIdRaw) {
-      issues.push(issue(`${currentPath}.contentId`, "contentId is required", "required"));
-    } else if (seenContentIds.has(contentIdRaw)) {
-      issues.push(issue(`${currentPath}.contentId`, "contentId must be unique in a campaign", "duplicate"));
-    }
-
-    if (contentIdRaw) {
-      seenContentIds.add(contentIdRaw);
-    }
-
-    if (!ALLOWED_ITEM_TYPES.has(typeRaw)) {
-      issues.push(issue(`${currentPath}.type`, "type must be one of TEXT, IMAGE, VIDEO", "invalid_enum"));
-    }
-
-    if (!Number.isInteger(orderRaw) || orderRaw < 1) {
-      issues.push(issue(`${currentPath}.order`, "order must be an integer >= 1", "invalid_number"));
-    }
-
-    if (!Number.isInteger(durationRaw) || durationRaw < 1) {
-      issues.push(issue(`${currentPath}.durationSec`, "durationSec must be an integer >= 1", "invalid_number"));
-    }
-
-    if (typeRaw === "TEXT") {
-      if (!dataRaw) {
-        issues.push(issue(`${currentPath}.data`, "TEXT block requires non-empty text data", "required"));
-      }
-    } else if (typeRaw === "IMAGE" || typeRaw === "VIDEO") {
-      if (!dataRaw) {
-        issues.push(issue(`${currentPath}.data`, `${typeRaw} block requires an uploaded media URL`, "required"));
-      }
-    }
-
-    return {
-      contentId: contentIdRaw || `content-${idx + 1}`,
-      type: typeRaw || "TEXT",
-      data: dataRaw,
-      order: Number.isInteger(orderRaw) ? orderRaw : idx + 1,
-      durationSec: Number.isInteger(durationRaw) ? durationRaw : 30,
-    };
-  });
-
-  throwIfIssues(issues);
-  return normalized.sort((a, b) => a.order - b.order);
-}
-
-function validateCampaignName(campaignName, pathLabel = "campaignName") {
-  const name = String(campaignName || "").trim();
-  if (!name) {
-    throw new ValidationError([issue(pathLabel, "campaignName is required", "required")]);
-  }
-  return name;
-}
-
+/**
+ * Creates a new idle/visitor campaign.
+ *
+ * @param {object} payload - Campaign payload.
+ * @returns {object} Updated state.
+ */
 function createCampaign({ kind, campaignName, items }) {
   const state = readState();
 
@@ -379,6 +57,13 @@ function createCampaign({ kind, campaignName, items }) {
   return writeState(state);
 }
 
+/**
+ * Updates existing campaign by id.
+ *
+ * @param {string} campaignId - Campaign id.
+ * @param {object} patch - Campaign patch.
+ * @returns {object} Updated state.
+ */
 function updateCampaign(campaignId, patch) {
   const state = readState();
   const campaignIdTrimmed = String(campaignId || "").trim();
@@ -411,6 +96,12 @@ function updateCampaign(campaignId, patch) {
   throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
 }
 
+/**
+ * Deletes campaign by id.
+ *
+ * @param {string} campaignId - Campaign id.
+ * @returns {object} Updated state.
+ */
 function deleteCampaign(campaignId) {
   const state = readState();
   const id = String(campaignId || "").trim();
@@ -444,6 +135,12 @@ function deleteCampaign(campaignId) {
   return writeState(state);
 }
 
+/**
+ * Sets active campaign ids.
+ *
+ * @param {object} payload - Active mapping payload.
+ * @returns {object} Updated state.
+ */
 function setActiveCampaigns({ idleCampaignId, visitorCampaignId }) {
   const state = readState();
   const issues = [];
@@ -470,6 +167,12 @@ function setActiveCampaigns({ idleCampaignId, visitorCampaignId }) {
   return writeState(state);
 }
 
+/**
+ * Sets global admin settings.
+ *
+ * @param {object} patch - Settings patch.
+ * @returns {object} Updated state.
+ */
 function setSettings(patch) {
   const timeout = Number(patch?.inactivityTimeoutMs);
   if (!Number.isInteger(timeout) || timeout < 100) {
@@ -483,106 +186,12 @@ function setSettings(patch) {
   return writeState(state);
 }
 
-function normalizeStudentPayload({ nfcUid, name, items }) {
-  const uid = String(nfcUid || "").trim();
-  const studentName = String(name || "").trim();
-  const issues = [];
-
-  if (!uid) {
-    issues.push(issue("nfcUid", "nfcUid is required", "required"));
-  }
-
-  if (!studentName) {
-    issues.push(issue("name", "Student name is required", "required"));
-  }
-
-  if (issues.length > 0) {
-    throw new ValidationError(issues);
-  }
-
-  return {
-    nfcUid: uid,
-    name: studentName,
-    items: normalizeAndValidateItems(items, "items"),
-  };
-}
-
-function isSafeImageReference(value) {
-  const normalized = String(value || "").trim();
-  if (!normalized) return false;
-  if (normalized.startsWith("/media/")) return true;
-
-  try {
-    const parsed = new URL(normalized);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-function normalizeStudentProfilePayload(profile, pathPrefix = "students[]") {
-  const nfcUid = String(profile?.nfcUid || "").trim();
-  const displayName = String(profile?.displayName || profile?.name || "").trim();
-  const timetableImageUrl = String(profile?.timetableImageUrl || "").trim();
-  const nextClassText = String(profile?.nextClassText || "").trim();
-  const issues = [];
-
-  if (!nfcUid) {
-    issues.push(issue(`${pathPrefix}.nfcUid`, "nfcUid is required", "required"));
-  }
-  if (!displayName) {
-    issues.push(issue(`${pathPrefix}.displayName`, "displayName is required", "required"));
-  }
-  if (!timetableImageUrl) {
-    issues.push(issue(`${pathPrefix}.timetableImageUrl`, "timetableImageUrl is required", "required"));
-  } else if (!isSafeImageReference(timetableImageUrl)) {
-    issues.push(issue(`${pathPrefix}.timetableImageUrl`, "timetableImageUrl must be /media/* or http(s) URL", "invalid_url"));
-  }
-
-  throwIfIssues(issues);
-  return {
-    nfcUid,
-    displayName,
-    timetableImageUrl,
-    nextClassText,
-    updatedAt: nowIso(),
-  };
-}
-
-function buildGeneratedStudentCampaign(profile) {
-  const headline = `Welcome ${profile.displayName}`;
-  const nextClassLine = profile.nextClassText || "Please check the timetable shown.";
-  return {
-    campaignId: `student-${profile.nfcUid}`,
-    campaignName: `${profile.displayName} Info`,
-    kind: "student",
-    updatedAt: nowIso(),
-    items: normalizeAndValidateItems([
-      {
-        contentId: "student-auto-1",
-        type: "TEXT",
-        data: `${headline}\nYour personal info is ready`,
-        order: 1,
-        durationSec: 20,
-      },
-      {
-        contentId: "student-auto-2",
-        type: "IMAGE",
-        data: profile.timetableImageUrl,
-        order: 2,
-        durationSec: 25,
-      },
-      {
-        contentId: "student-auto-3",
-        type: "TEXT",
-        data: nextClassLine,
-        order: 3,
-        durationSec: 20,
-      },
-    ], "items"),
-  };
-}
-
+/**
+ * Imports student profile list and replaces stored profiles.
+ *
+ * @param {object} payload - Student profile import payload.
+ * @returns {object} Updated state.
+ */
 function importStudentProfiles(payload) {
   const state = readState();
   const inputStudents = Array.isArray(payload?.students) ? payload.students : null;
@@ -618,34 +227,31 @@ function importStudentProfiles(payload) {
   return writeState(state);
 }
 
+/**
+ * Returns generated student campaign payload by UID.
+ *
+ * @param {string} nfcUid - Student UID.
+ * @returns {object} Generated student campaign payload.
+ */
 function getGeneratedStudentCampaignByUid(nfcUid) {
-  const state = readState();
-  const uid = String(nfcUid || "").trim();
-  if (!uid) {
-    throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
-  }
-
-  const profile = state.studentProfiles.find((item) => item.nfcUid === uid) || null;
-  if (!profile) {
-    throw new ValidationError([issue("nfcUid", "Student profile not found", "not_found")]);
-  }
-
-  return {
-    nfcUid: profile.nfcUid,
-    name: profile.displayName,
-    campaign: buildGeneratedStudentCampaign(profile),
-  };
+  return mapGeneratedStudentCampaignByUid(readState(), nfcUid);
 }
 
+/**
+ * Lists all generated student campaigns.
+ *
+ * @returns {Array<object>} Generated student campaigns.
+ */
 function listGeneratedStudentCampaigns() {
-  const state = readState();
-  return (state.studentProfiles || []).map((profile) => ({
-    nfcUid: profile.nfcUid,
-    name: profile.displayName,
-    campaign: buildGeneratedStudentCampaign(profile),
-  }));
+  return mapGeneratedStudentCampaigns(readState());
 }
 
+/**
+ * Creates or updates a manual student campaign mapping.
+ *
+ * @param {object} payload - Student payload.
+ * @returns {object} Updated state.
+ */
 function upsertStudent(payload) {
   const state = readState();
   const normalized = normalizeStudentPayload(payload || {});
@@ -671,6 +277,12 @@ function upsertStudent(payload) {
   return writeState(state);
 }
 
+/**
+ * Deletes manual student mapping by UID.
+ *
+ * @param {string} nfcUid - Student UID.
+ * @returns {object} Updated state.
+ */
 function deleteStudent(nfcUid) {
   const state = readState();
   const uid = String(nfcUid || "").trim();
@@ -687,6 +299,12 @@ function deleteStudent(nfcUid) {
   return writeState(state);
 }
 
+/**
+ * Sets menu campaign.
+ *
+ * @param {object} payload - Menu campaign payload.
+ * @returns {object} Updated state.
+ */
 function setMenuCampaign({ campaignName, items }) {
   const state = readState();
 
@@ -698,21 +316,6 @@ function setMenuCampaign({ campaignName, items }) {
     items: normalizeAndValidateItems(items, "items"),
   };
   return writeState(state);
-}
-
-function toRuntimeConfig(state) {
-  const idleCampaign = state.idleCampaigns.find((c) => c.campaignId === state.active.idleCampaignId) || null;
-  const visitorCampaign = state.visitorCampaigns.find((c) => c.campaignId === state.active.visitorCampaignId) || null;
-
-  return {
-    settings: state.settings,
-    active: state.active,
-    idleCampaign,
-    menuCampaign: state.menuCampaign,
-    visitorCampaign,
-    students: state.students,
-    updatedAt: state.updatedAt,
-  };
 }
 
 module.exports = {

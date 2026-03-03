@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digital Signage Campaign Builder</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- CENTER: Campaign Editor -->
+    <div class="center-canvas">
+      <section class="overview-shell">
+        <div class="overview-floating-head">
+          <div>
+            <h2 class="overview-title">Campaign Overview</h2>
+            <p class="overview-sub">
+              <span id="overviewCount">0 campaigns</span>
+              <span>|</span>
+              <span id="overviewLiveCount">0 live</span>
+            </p>
+          </div>
+          <div class="overview-controls">
+            <input type="text" class="overview-search" id="sidebarSearch" placeholder="Search by name, UID, or ID" />
+            <select class="overview-filter" id="overviewTypeFilter">
+              <option value="all">All types</option>
+              <option value="idle">Idle</option>
+              <option value="visitor">Visitor</option>
+              <option value="student">Student</option>
+              <option value="menu">Menu</option>
+            </select>
+            <select class="overview-filter" id="overviewStatusFilter">
+              <option value="all">All status</option>
+              <option value="live">Live</option>
+              <option value="draft">Draft</option>
+            </select>
+            <button class="btn-create" onclick="createNewCampaign()">+ Create</button>
+          </div>
+        </div>
+        <div class="overview-grid" id="overviewGrid"></div>
+      </section>
+
+      <header class="canvas-header">
+        <div class="canvas-header-top">
+          <div class="header-title-block">
+            <h1 class="header-title">
+              <input type="text" id="campaignNameInput" placeholder="Untitled Campaign" value="" />
+            </h1>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="publishBtn" onclick="publishCampaign()">Publish</button>
+            <button class="btn btn-primary" id="saveCampaignBtn" onclick="saveBuilderCampaign()">Save</button>
+          </div>
+        </div>
+
+        <div class="canvas-header-bottom">
+          <div class="form-row">
+            <label for="builderType">Type:</label>
+            <select id="builderType"></select>
+          </div>
+          <div class="form-row" id="studentUidWrap" style="display:none">
+            <label for="studentUid">Student UID:</label>
+            <input type="text" id="studentUid" placeholder="e.g. stu-001" style="width: 120px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;" />
+          </div>
+          <div style="margin-left: auto;">
+            <span class="status-indicator" id="statusBadge">Draft</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="canvas-scroll">
+        <div class="blocks-container">
+          <div id="blocks"></div>
+          <button class="add-block-button" id="addBlockBtn" onclick="showAddBlockMenu()">
+            + Add Block
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Inspector Panel -->
+    <aside class="inspector">
+      <div class="inspector-header">
+        <h3 class="inspector-title">Properties</h3>
+      </div>
+      <div class="inspector-content" id="inspectorContent">
+        <div class="blocks-empty" style="text-align: center; color: var(--text-tertiary); font-size: 12px;">
+          Select a campaign or block to view properties
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Status Toast -->
+  <div id="status" class="status-toast"></div>
+
+  <script src="/services/http.js"></script>
+  <script src="/components/blocks.js"></script>
+  <script src="/admin-ui.js"></script>
+</body>
+</html>

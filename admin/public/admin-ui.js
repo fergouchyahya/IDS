@@ -19,73 +19,8 @@ const builder = {
 let menuBlocks = [];
 let builderIssues = [];
 let menuIssues = [];
-let toastTimeout = null;
-
-function setStatus(msg, ok = true, issues = []) {
-  const el = document.getElementById("status");
-  if (!el) return;
-  el.className = `status-toast ${ok ? "good" : "bad"}`;
-  const list = Array.isArray(issues) ? issues : [];
-  if (!ok && list.length > 0) {
-    const detailItems = list
-      .slice(0, 4)
-      .map((i) => `<li>${escapeHtml(i.path || "field")}: ${escapeHtml(i.message || "invalid value")}</li>`)
-      .join("");
-    const more = list.length > 4 ? `<div style="margin-top:6px;font-size:11px;opacity:.85;">+${list.length - 4} more error(s)</div>` : "";
-    el.innerHTML = `<div><strong>${escapeHtml(msg)}</strong></div><ul style="margin:6px 0 0 16px;padding:0;">${detailItems}</ul>${more}`;
-  } else {
-    el.textContent = msg;
-  }
-  el.classList.add("show");
-
-  // Auto-hide after 4 seconds
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    el.classList.remove("show");
-  }, 4000);
-}
-
-function escapeHtml(input) {
-  return String(input)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-async function api(url, options = {}) {
-  const res = await fetch(url, options);
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err = new Error(data.error || "Request failed");
-    err.issues = Array.isArray(data.issues) ? data.issues : [];
-    throw err;
-  }
-
-  return data;
-}
-
-function defaultBlock(order = 1) {
-  return {
-    contentId: `content-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
-    type: "TEXT",
-    data: "",
-    order,
-    durationSec: 30,
-  };
-}
-
-function makeBlockByType(type, order) {
-  const upper = String(type || "TEXT").toUpperCase();
-  const block = defaultBlock(order);
-  block.type = upper;
-  if (upper === "IMAGE" || upper === "VIDEO") {
-    block.durationSec = 12;
-  }
-  return block;
-}
+const { setStatus, escapeHtml, api } = window.AdminHttp;
+const { defaultBlock, makeBlockByType } = window.AdminBlocks;
 
 function getGeneratedStudentCampaigns() {
   return Array.isArray(state?.generatedStudentCampaigns) ? state.generatedStudentCampaigns : [];
