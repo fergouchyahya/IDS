@@ -43,7 +43,12 @@ function createAdminRouter(deps) {
 
     if (
       req.method === "GET"
-      && (url.pathname === "/styles.css" || url.pathname.startsWith("/services/") || url.pathname.startsWith("/components/"))
+      && (
+        url.pathname === "/styles.css"
+        || url.pathname === "/app.js"
+        || url.pathname.startsWith("/services/")
+        || url.pathname.startsWith("/components/")
+      )
     ) {
       return handlePublicAsset(req, res, url, deps);
     }
