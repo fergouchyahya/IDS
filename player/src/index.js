@@ -1,15 +1,28 @@
 /**
- * IDS Player — Entry Point
+ * IDS Player entry point.
+ *
+ * Responsibilities:
+ * - Parse CLI/environment options.
+ * - Load startup configuration files.
+ * - Start player HTTP server.
  */
 
 const fs = require("fs");
 const path = require("path");
 
-const { createServer, normalizeRuntimeConfig } = require("./server");
+const { createServer } = require("./server");
+const { normalizeRuntimeConfig } = require("./services/config-service");
 const { createLogger } = require("../../shared/utils/logger");
+const { getConfig } = require("../../shared/config");
 
 const logger = createLogger("ids-player-entry");
 
+/**
+ * Loads and parses a JSON file.
+ *
+ * @param {string} configPath - Absolute file path.
+ * @returns {object} Parsed JSON object.
+ */
 function loadJson(configPath) {
   if (!fs.existsSync(configPath)) {
     logger.error("config_missing", { configPath });
@@ -25,12 +38,19 @@ function loadJson(configPath) {
   }
 }
 
+/**
+ * Parses CLI arguments and environment fallback values.
+ *
+ * @param {Array<string>} argv - CLI args excluding node and script path.
+ * @returns {object} Parsed CLI options.
+ */
 function parseCli(argv) {
+  const sharedConfig = getConfig().getPlayer();
   const args = {
-    configPath: process.env.IDS_CONFIG || "shared/contract/examples/config.welcome.json",
-    port: Number(process.env.PLAYER_PORT || 7070),
-    adminUrl: process.env.IDS_ADMIN_URL || "",
-    detectorConfigJson: process.env.IDS_DETECTOR_CONFIG || "",
+    configPath: sharedConfig.configPath || "shared/contract/examples/config.welcome.json",
+    port: Number(sharedConfig.port || 7070),
+    adminUrl: sharedConfig.adminUrl || "",
+    detectorConfigJson: sharedConfig.detectorConfigJson || "",
     detectorConfigFile: "",
   };
 

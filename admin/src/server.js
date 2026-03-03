@@ -1,225 +1,147 @@
 /**
- * IDS Admin — HTTP API + web UI.
+ * IDS Admin HTTP server composition root.
+ *
+ * Responsibilities:
+ * - Configure shared dependencies.
+ * - Create and start HTTP server.
+ * - Handle unhandled request-level errors.
  */
 
-const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const crypto = require("crypto");
-
-const { json, text, readJsonBody: readJsonBodyBase } = require("../../shared/utils/http-helpers");
+const { json } = require("../../shared/utils/http-helpers");
 const { createLogger } = require("../../shared/utils/logger");
 const { renderAdminPage } = require("./render-admin-page");
 const { createAdminRouter } = require("./router");
 const storage = require("./storage");
+const {
+  ensureUploadDir,
+  processUploadMultipart,
+  resolveMimeByExtension,
+} = require("./utils/media-utils");
+const {
+  createJsonBodyReader,
+  createRawBodyReader,
+  sendValidationError,
+} = require("./utils/request-utils");
+const { createCampaignService } = require("./services/campaign-service");
+const { createConfigService } = require("./services/config-service");
+const { createStudentService } = require("./services/student-service");
+const { createStateService } = require("./services/state-service");
+const { createHealthService } = require("./services/health-service");
+const { createMediaService } = require("./services/media-service");
 
 const logger = createLogger("ids-admin-server");
 
 const ADMIN_UI_JS_PATH = path.resolve(__dirname, "../public/admin-ui.js");
+const PUBLIC_DIR = path.resolve(__dirname, "../public");
 const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
   ? path.resolve(process.env.IDS_ADMIN_DATA_DIR)
   : path.resolve(__dirname, "../data");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
 
-function ensureUploadDir() {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-function readJsonBody(req, maxBytes = 2_000_000) {
-  return readJsonBodyBase(req, {
-    maxBytes,
-    onTooLarge: () => new storage.ValidationError([{ path: "body", message: "Body too large", code: "too_large" }]),
-    onInvalidJson: () => new storage.ValidationError([{ path: "body", message: "Invalid JSON body", code: "invalid_json" }]),
+/**
+ * Processes multipart upload using admin defaults.
+ *
+ * @param {object} params - Upload options.
+ * @returns {object} Uploaded media metadata.
+ */
+function processUploadMultipartWithDefaults(params) {
+  return processUploadMultipart({
+    ...params,
+    uploadDir: UPLOAD_DIR,
+    maxUploadSize: MAX_UPLOAD_SIZE,
+    storage,
   });
 }
 
-function readRawBody(req, maxBytes = MAX_UPLOAD_SIZE + 1024 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let total = 0;
-
-    req.on("data", (chunk) => {
-      total += chunk.length;
-      if (total > maxBytes) {
-        reject(new storage.ValidationError([{ path: "file", message: "Upload too large", code: "too_large" }]));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", (err) => reject(err));
+/**
+ * Builds all admin domain services.
+ *
+ * @returns {object} Service registry.
+ */
+function buildServices() {
+  const campaigns = createCampaignService({ storage });
+  const config = createConfigService({ storage });
+  const students = createStudentService({ storage });
+  const state = createStateService({ storage, studentService: students });
+  const health = createHealthService({ storage });
+  const media = createMediaService({
+    uploadDir: UPLOAD_DIR,
+    resolveMimeByExtension,
+    processUploadMultipart: processUploadMultipartWithDefaults,
   });
-}
-
-function sendValidationError(res, err) {
-  if (err instanceof storage.ValidationError) {
-    const statusCode = err.issues.some((item) => item?.code === "not_found") ? 404 : 400;
-    return json(res, statusCode, {
-      error: "validation_failed",
-      issues: err.issues,
-    });
-  }
-
-  return json(res, 400, {
-    error: "validation_failed",
-    issues: [{ path: "request", message: err.message || "Invalid request", code: "invalid_request" }],
-  });
-}
-
-function sanitizeFilename(filename) {
-  return String(filename || "")
-    .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-}
-
-function getExtFromMime(mime) {
-  if (mime === "image/jpeg") return ".jpg";
-  if (mime === "image/png") return ".png";
-  if (mime === "image/webp") return ".webp";
-  if (mime === "image/gif") return ".gif";
-  if (mime === "video/mp4") return ".mp4";
-  if (mime === "video/webm") return ".webm";
-  if (mime === "video/quicktime") return ".mov";
-  return "";
-}
-
-function isAllowedMimeType(mimeType) {
-  return /^image\//.test(mimeType) || /^video\//.test(mimeType);
-}
-
-function buildAbsoluteUrl(req, pathname) {
-  const configured = process.env.IDS_PUBLIC_ADMIN_URL;
-  if (configured) {
-    return `${configured.replace(/\/$/, "")}${pathname}`;
-  }
-
-  const host = req.headers.host || "127.0.0.1:8081";
-  const proto = req.headers["x-forwarded-proto"] || "http";
-  return `${proto}://${host}${pathname}`;
-}
-
-function parseMultipartFile(bodyBuffer, contentType) {
-  const boundaryMatch = /boundary=([^;]+)/i.exec(contentType || "");
-  if (!boundaryMatch) {
-    throw new storage.ValidationError([{ path: "file", message: "Missing multipart boundary", code: "invalid_multipart" }]);
-  }
-
-  const boundary = boundaryMatch[1].trim();
-  const body = bodyBuffer.toString("latin1");
-  const delimiter = `--${boundary}`;
-  const parts = body.split(delimiter);
-
-  for (const partRaw of parts) {
-    const part = partRaw.trim();
-    if (!part || part === "--") continue;
-
-    const headerEnd = part.indexOf("\r\n\r\n");
-    if (headerEnd < 0) continue;
-
-    const headerText = part.slice(0, headerEnd);
-    const contentText = part.slice(headerEnd + 4).replace(/\r\n--$/, "");
-
-    const disposition = /content-disposition:\s*form-data;([^\r\n]+)/i.exec(headerText);
-    if (!disposition) continue;
-
-    const nameMatch = /name="([^"]+)"/i.exec(disposition[1]);
-    const filenameMatch = /filename="([^"]*)"/i.exec(disposition[1]);
-
-    if (!nameMatch || nameMatch[1] !== "file") continue;
-
-    const mimeMatch = /content-type:\s*([^\r\n]+)/i.exec(headerText);
-    const mimeType = (mimeMatch?.[1] || "application/octet-stream").trim().toLowerCase();
-    const originalName = filenameMatch?.[1] || "upload.bin";
-
-    const fileBuffer = Buffer.from(contentText, "latin1");
-
-    return {
-      originalName,
-      mimeType,
-      buffer: fileBuffer,
-      size: fileBuffer.length,
-    };
-  }
-
-  throw new storage.ValidationError([{ path: "file", message: "Missing file field in multipart payload", code: "required" }]);
-}
-
-function processUploadMultipart({ bodyBuffer, contentType, reqLike }) {
-  const file = parseMultipartFile(bodyBuffer, contentType);
-
-  if (file.size < 1) {
-    throw new storage.ValidationError([{ path: "file", message: "File is empty", code: "empty_file" }]);
-  }
-
-  if (file.size > MAX_UPLOAD_SIZE) {
-    throw new storage.ValidationError([{ path: "file", message: "File exceeds 20MB limit", code: "too_large" }]);
-  }
-
-  if (!isAllowedMimeType(file.mimeType)) {
-    throw new storage.ValidationError([
-      { path: "file", message: "Only image/* and video/* uploads are allowed", code: "invalid_mime_type" },
-    ]);
-  }
-
-  const safeBaseName = sanitizeFilename(file.originalName.replace(/\.[^.]+$/, "")) || "media";
-  const ext = getExtFromMime(file.mimeType) || path.extname(file.originalName).toLowerCase() || ".bin";
-  const mediaId = crypto.randomBytes(6).toString("hex");
-  const filename = `${safeBaseName}-${mediaId}${ext}`;
-
-  ensureUploadDir();
-  fs.writeFileSync(path.join(UPLOAD_DIR, filename), file.buffer);
-
-  const urlPath = `/media/${filename}`;
-  const absoluteUrl = buildAbsoluteUrl(reqLike || { headers: {} }, urlPath);
 
   return {
-    mediaId,
-    url: absoluteUrl,
-    urlPath,
-    mimeType: file.mimeType,
-    size: file.size,
-    filename,
+    campaigns,
+    config,
+    students,
+    state,
+    health,
+    media,
   };
 }
 
-function resolveMimeByExtension(filename) {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".mp4")) return "video/mp4";
-  if (lower.endsWith(".webm")) return "video/webm";
-  if (lower.endsWith(".mov")) return "video/quicktime";
-  return "application/octet-stream";
-}
-
+/**
+ * Creates and starts admin HTTP server.
+ *
+ * @param {object} [options={}] - Server options.
+ * @param {number} [options.port=8081] - Server port.
+ * @returns {import('http').Server} Started HTTP server instance.
+ */
 function createServer({ port = 8081 } = {}) {
-  ensureUploadDir();
+  ensureUploadDir(UPLOAD_DIR);
   const startedAt = Date.now();
 
+  const readJsonBody = createJsonBodyReader(storage);
+  const readRawBody = createRawBodyReader(storage, MAX_UPLOAD_SIZE);
+  const services = buildServices();
+
+  /**
+   * Sends normalized validation error for handlers.
+   *
+   * @param {import('http').ServerResponse} res - HTTP response.
+   * @param {Error} err - Validation error.
+   */
+  function handleValidationError(res, err) {
+    return sendValidationError(res, err, storage);
+  }
+
+  /**
+   * Processes multipart upload and persists media file.
+   *
+   * @param {object} params - Upload options.
+   * @returns {object} Uploaded media metadata.
+   */
+  function handleUploadMultipart(params) {
+    return processUploadMultipartWithDefaults(params);
+  }
+
   const handleRequest = createAdminRouter({
-    json,
-    text,
     logger,
     startedAt,
     renderAdminPage,
     adminUiJsPath: ADMIN_UI_JS_PATH,
+    publicDir: PUBLIC_DIR,
     uploadDir: UPLOAD_DIR,
     resolveMimeByExtension,
     readRawBody,
     readJsonBody,
-    processUploadMultipart,
-    sendValidationError,
+    processUploadMultipart: handleUploadMultipart,
+    sendValidationError: handleValidationError,
     storage,
+    services,
   });
 
-  const server = http.createServer(async (req, res) => {
+  /**
+   * Handles incoming requests with top-level error safety.
+   *
+   * @param {import('http').IncomingMessage} req - HTTP request.
+   * @param {import('http').ServerResponse} res - HTTP response.
+   * @returns {Promise<void>}
+   */
+  async function handleIncomingRequest(req, res) {
     try {
       await handleRequest(req, res);
     } catch (error) {
@@ -232,13 +154,24 @@ function createServer({ port = 8081 } = {}) {
         json(res, 500, { error: "internal_error" });
       }
     }
-  });
+  }
 
-  server.listen(port, "127.0.0.1", () => {
+  /**
+   * Logs server listening event.
+   */
+  function handleServerListening() {
     logger.info("server_listening", { url: `http://127.0.0.1:${port}` });
-  });
+  }
+
+  const server = http.createServer(handleIncomingRequest);
+  server.listen(port, "127.0.0.1", handleServerListening);
 
   return server;
 }
 
-module.exports = { createServer, MAX_UPLOAD_SIZE, UPLOAD_DIR, processUploadMultipart };
+module.exports = {
+  createServer,
+  MAX_UPLOAD_SIZE,
+  UPLOAD_DIR,
+  processUploadMultipart: processUploadMultipartWithDefaults,
+};
