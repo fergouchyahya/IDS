@@ -160,7 +160,9 @@ function createServer({ port = 8081 } = {}) {
    * Logs server listening event.
    */
   function handleServerListening() {
-    logger.info("server_listening", { url: `http://127.0.0.1:${port}` });
+    const address = server.address();
+    const boundPort = typeof address === "object" && address ? address.port : port;
+    logger.info("server_listening", { url: `http://127.0.0.1:${boundPort}` });
   }
 
   const server = http.createServer(handleIncomingRequest);
