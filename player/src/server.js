@@ -78,7 +78,9 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000, de
    * Handles successful server listen event.
    */
   function handleServerListening() {
-    logger.info("server_listening", { url: `http://127.0.0.1:${port}` });
+    const address = server.address();
+    const boundPort = typeof address === "object" && address ? address.port : port;
+    logger.info("server_listening", { url: `http://127.0.0.1:${boundPort}` });
     logger.info("flow", {
       value: "IDLE -> movement_detected -> MENU -> (visitor_selected|nfc_tap) -> INFO -> inactivity -> IDLE",
     });
