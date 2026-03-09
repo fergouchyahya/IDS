@@ -16,6 +16,11 @@ const inspectorComponent = window.AdminInspectorComponent;
 const actions = window.AdminActions;
 const uiEvents = window.AdminUiEvents;
 const editorState = window.AdminEditorState;
+const editorView = window.AdminEditorView;
+const editorController = window.AdminEditorController;
+const runtimeDeps = window.AdminRuntimeDeps;
+const renderHelpers = window.AdminRenderHelpers;
+const blockOps = window.AdminBlockOps;
 
 let state = uiStateStore.getState();
 let selectedCampaignId = uiStateStore.getSelectedCampaignId();
@@ -50,70 +55,71 @@ function syncUiStateStore() {
   });
 }
 
-/**
- * Builds dependency object for action service calls.
- *
- * @returns {object} Action dependencies.
- */
+const runtime = {
+  builder,
+  defaultBlock,
+  makeBlockByType,
+  setStatus,
+  escapeHtml,
+  api,
+  getState: () => state,
+  setState: (value) => {
+    state = value;
+  },
+  getMenuBlocks: () => menuBlocks,
+  getMenuIssues: () => menuIssues,
+  setBuilderIssues: (issues) => {
+    builderIssues = issues;
+  },
+  setMenuIssues: (issues) => {
+    menuIssues = issues;
+  },
+  syncUiStateStore,
+  findStudentCampaignByUid,
+  getCampaignsByType,
+  cardTypeLabel,
+  toRelativeTime,
+  normalizeCampaignCards,
+  validateBuilder,
+  validateMenu,
+  normalizeBlock,
+  getBlockIssues,
+  issuePathToInputId,
+  getSelectedCampaignId: () => selectedCampaignId,
+  setSelectedCampaignId: (value) => {
+    selectedCampaignId = value;
+  },
+  getSelectedBlockIndex: () => selectedBlockIndex,
+  setSelectedBlockIndex: (value) => {
+    selectedBlockIndex = value;
+  },
+  getSidebarQuery: () => sidebarQuery,
+  getOverviewTypeFilter: () => overviewTypeFilter,
+  getOverviewStatusFilter: () => overviewStatusFilter,
+  getDragSourceIndex: () => dragSourceIndex,
+  setDragSourceIndex: (value) => {
+    dragSourceIndex = value;
+  },
+};
+
 function getActionDeps() {
-  return {
-    api,
-    builder,
-    menuBlocks,
-    setStatus,
-    validateBuilder,
-    normalizeBlock,
-    resolveCampaignIdFromState,
-    renderInspector,
-    renderBlockEditor,
-    syncFormFromBuilder,
-    updateSaveButtons,
-    createNewCampaign,
-    refresh,
-    saveBuilderCampaign,
-    getState: () => state,
-    setState: (nextState) => {
-      state = nextState;
-      syncUiStateStore();
-    },
-    setBuilderIssues: (issues) => {
-      builderIssues = issues;
-      syncUiStateStore();
-    },
-    getMenuIssues: () => menuIssues,
-    afterRefresh: fillInitialData,
-    deleteCampaign: (campaignId) => deleteCampaignUI(campaignId),
-    deleteStudent: (uid) => deleteStudentUI(uid),
-  };
+  return runtimeDeps.buildActionDeps(runtime);
 }
 
-/**
- * Builds dependency object for editor state helper calls.
- *
- * @returns {object} Editor-state dependencies.
- */
 function getEditorStateDeps() {
-  return {
-    state,
-    builder,
-    defaultBlock,
-    setStatus,
-    findStudentCampaignByUid,
-    getCampaignsByType,
-    setBuilderFromCampaign,
-    syncFormFromBuilder,
-    syncUiStateStore,
-    renderSidebar,
-    renderBlocks,
-    renderInspector,
-    updateCampaignHeader,
-    setSelectedCampaignId: (value) => {
-      selectedCampaignId = value;
-    },
-    setSelectedBlockIndex: (value) => {
-      selectedBlockIndex = value;
-    },
-  };
+  return runtimeDeps.buildEditorStateDeps(runtime);
+}
+
+function getBlockOpsDeps() {
+  return runtimeDeps.buildBlockOpsDeps(runtime);
+}
+
+function getEditorViewDeps() {
+  return runtimeDeps.buildEditorViewDeps(runtime);
+}
+
+function getControllerDeps() {
+  return runtimeDeps.buildControllerDeps(runtime);
 }
 
 function findStudentCampaignByUid(uid) {
@@ -138,14 +144,14 @@ function cardTypeLabel(kind) {
 
 /* ===== SIDEBAR RENDERING ===== */
 function renderSidebar() {
-  overviewComponent.renderSidebar({
-    sidebarContent: document.getElementById("overviewGrid"),
-    state,
-    sidebarQuery,
-    overviewTypeFilter,
-    overviewStatusFilter,
-    selectedCampaignId,
-    getCards: normalizeCampaignCards,
+  renderHelpers.renderSidebar({
+    overviewComponent,
+    getState: runtime.getState,
+    getSidebarQuery: runtime.getSidebarQuery,
+    getOverviewTypeFilter: runtime.getOverviewTypeFilter,
+    getOverviewStatusFilter: runtime.getOverviewStatusFilter,
+    getSelectedCampaignId: runtime.getSelectedCampaignId,
+    normalizeCampaignCards,
     escapeHtml,
     cardTypeLabel,
     toRelativeTime,
@@ -157,80 +163,34 @@ function duplicateCampaignFromOverview(type, id) {
 }
 
 async function deployCampaignFromOverview(type, id) {
-  if (!state) return;
-
-  try {
-    if (type === "idle" || type === "visitor") {
-      await api("/api/active", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          idleCampaignId: type === "idle" ? id : state.active?.idleCampaignId,
-          visitorCampaignId: type === "visitor" ? id : state.active?.visitorCampaignId,
-        }),
-      });
-      await refresh();
-      setStatus(`${cardTypeLabel(type)} campaign deployed`, true);
-      return;
-    }
-
-    if (type === "menu") {
-      loadCampaignToEditor("menu", id);
-      await publishCampaign();
-      return;
-    }
-
-    loadCampaignToEditor("student", id);
-    setStatus("Student campaigns are available on NFC tap", true);
-  } catch (e) {
-    setStatus("Deploy failed", false, e.issues || []);
-  }
+  return editorController.deployCampaignFromOverviewState(getControllerDeps(), type, id);
 }
 
 /* ===== BLOCK CARD RENDERING ===== */
 function renderBlocks() {
-  builderComponent.renderBlocks({
-    blocksEl: document.getElementById("blocks"),
+  renderHelpers.renderBlocks({
+    builderComponent,
     builder,
-    selectedBlockIndex,
+    getSelectedBlockIndex: runtime.getSelectedBlockIndex,
     escapeHtml,
   });
 }
 
 /* ===== INSPECTOR PANEL RENDERING ===== */
 function renderInspector() {
-  inspectorComponent.renderInspector({
-    inspectorContent: document.getElementById("inspectorContent"),
-    selectedBlockIndex,
-    selectedCampaignId,
+  renderHelpers.renderInspector({
+    inspectorComponent,
     builder,
+    getState: runtime.getState,
+    getSelectedBlockIndex: runtime.getSelectedBlockIndex,
+    getSelectedCampaignId: runtime.getSelectedCampaignId,
     escapeHtml,
-    activeCampaignPanelHtml: renderActiveCampaignPanel(),
   });
-}
-
-function fillSelect(selectEl, options, selectedValue) {
-  selectEl.innerHTML = "";
-  for (const optData of options) {
-    const opt = document.createElement("option");
-    opt.value = optData.value;
-    opt.textContent = optData.label;
-    if (String(optData.value) === String(selectedValue)) opt.selected = true;
-    selectEl.appendChild(opt);
-  }
 }
 
 /* ===== UI INTERACTION HANDLERS ===== */
 function createNewCampaign() {
-  selectedCampaignId = null;
-  selectedBlockIndex = null;
-  resetBuilderForType("idle");
-  syncUiStateStore();
-  renderSidebar();
-  renderBlocks();
-  renderInspector();
-  updateCampaignHeader();
-  setStatus("New campaign started", true);
+  return editorController.createNewCampaignState(getControllerDeps());
 }
 
 function loadCampaignToEditor(type, campaignId) {
@@ -238,47 +198,27 @@ function loadCampaignToEditor(type, campaignId) {
 }
 
 function selectBlock(idx) {
-  selectedBlockIndex = idx;
-  syncUiStateStore();
-  renderBlocks();
-  renderInspector();
+  return editorController.selectBlockState(getControllerDeps(), idx);
 }
 
 function updateCampaignHeader() {
-  const nameInput = document.getElementById("campaignNameInput");
-  const typeSelect = document.getElementById("builderType");
-  const statusBadge = document.getElementById("statusBadge");
-
-  if (nameInput) nameInput.value = builder.campaignName;
-  if (typeSelect) typeSelect.value = builder.type;
-
-  if (statusBadge) {
-    statusBadge.textContent = builder.blocks.length > 0 ? "Ready" : "Draft";
-    statusBadge.className = `status-indicator ${builder.blocks.length > 0 ? "live" : "draft"}`;
-  }
-
-  // Update student UID field visibility
-  const studentUidWrap = document.getElementById("studentUidWrap");
-  if (studentUidWrap) {
-    studentUidWrap.style.display = builder.type === "student" ? "block" : "none";
-    const studentUidInput = document.getElementById("studentUid");
-    if (studentUidInput) studentUidInput.value = builder.studentUid;
-  }
+  editorView.updateCampaignHeader(getEditorViewDeps());
 }
 
 function updateCampaignName(newName) {
-  builder.campaignName = newName;
-  updateCampaignHeader();
+  return editorController.updateCampaignNameState(getControllerDeps(), newName);
 }
 
 function updateStudentUidFromInspector(value) {
-  builder.studentUid = value;
-  updateCampaignHeader();
-  updateSaveButtons();
+  return editorController.updateStudentUidState(getControllerDeps(), value);
 }
 
 function renderActiveCampaignPanel() {
-  return inspectorComponent.renderActiveCampaignPanel({ state, escapeHtml });
+  return renderHelpers.renderActiveCampaignPanel({
+    inspectorComponent,
+    getState: runtime.getState,
+    escapeHtml,
+  });
 }
 
 async function applyActiveSelections() {
@@ -286,175 +226,57 @@ async function applyActiveSelections() {
 }
 
 function changeCampaignType(newType) {
-  builder.type = newType;
-  // Changing type from inspector means this is now a new unsaved draft.
-  builder.campaignId = null;
-  selectedCampaignId = null;
-  syncUiStateStore();
-  updateCampaignHeader();
-  renderInspector();
+  return editorController.changeCampaignTypeState(getControllerDeps(), newType);
 }
 
 function resolveCampaignIdFromState(kind, campaignName) {
-  if (!state) return null;
-  if (kind === "menu") return state.menuCampaign?.campaignId || "menu-default";
-  if (kind === "student") return `student-${String(builder.studentUid || "").trim()}`;
-
-  const list = kind === "idle" ? state.idleCampaigns || [] : state.visitorCampaigns || [];
-  const exact = list.find((c) => c.campaignName === campaignName);
-  if (exact) return exact.campaignId;
-  return list[list.length - 1]?.campaignId || null;
+  return editorController.resolveCampaignIdFromState(getControllerDeps(), kind, campaignName);
 }
 
 function showBlockMenu(idx) {
-  // Could be expanded to a dropdown menu with more options
-  const options = [
-    { label: "Duplicate", action: () => duplicateBlock(idx) },
-    { label: "Delete", action: () => removeBlock("blocks", idx) },
-  ];
-  // For now, just allow selection
   selectBlock(idx);
 }
 
 function duplicateBlock(idx) {
-  if (!builder.blocks[idx]) return;
-  const newBlock = { ...builder.blocks[idx] };
-  newBlock.contentId = `content-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
-  builder.blocks.splice(idx + 1, 0, newBlock);
-  renderBlocks();
-  selectedBlockIndex = idx + 1;
-  syncUiStateStore();
-  renderInspector();
-  setStatus("Block duplicated", true);
+  return blockOps.duplicateBlockState(getBlockOpsDeps(), idx);
 }
 
 function startDragBlock(event, idx) {
-  dragSourceIndex = idx;
-  syncUiStateStore();
-  event.dataTransfer.effectAllowed = "move";
-  event.dataTransfer.setData("blockIndex", idx);
-  const card = event.currentTarget?.closest(".block-card");
-  if (card) {
-    card.classList.add("dragging");
-  }
+  return blockOps.startDragBlockState(getBlockOpsDeps(), event, idx);
 }
 
 function allowDrop(event) {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = "move";
+  return blockOps.allowDropState(event);
 }
 
 function dragEnterBlock(event, targetIdx) {
-  event.preventDefault();
-  if (targetIdx === dragSourceIndex) return;
-  const card = event.currentTarget?.closest(".block-card");
-  if (card) card.classList.add("drop-target");
+  return blockOps.dragEnterBlockState(getBlockOpsDeps(), event, targetIdx);
 }
 
 function dragLeaveBlock(event) {
-  const card = event.currentTarget?.closest(".block-card");
-  if (card) card.classList.remove("drop-target");
+  return blockOps.dragLeaveBlockState(event);
 }
 
 function endDragBlock() {
-  dragSourceIndex = null;
-  syncUiStateStore();
-  document.querySelectorAll(".block-card.dragging, .block-card.drop-target").forEach((el) => {
-    el.classList.remove("dragging");
-    el.classList.remove("drop-target");
-  });
-}
-
-function normalizeBlockOrder(blocks) {
-  blocks.forEach((block, idx) => {
-    block.order = idx + 1;
-  });
+  return blockOps.endDragBlockState(getBlockOpsDeps());
 }
 
 function dropBlock(event, targetIdx) {
-  event.preventDefault();
-  const sourceIdxRaw = event.dataTransfer.getData("blockIndex");
-  const sourceIdx = Number(sourceIdxRaw || dragSourceIndex);
-  if (sourceIdx === targetIdx) return;
-
-  if (selectedBlockIndex !== null) {
-    if (selectedBlockIndex === sourceIdx) {
-      selectedBlockIndex = targetIdx;
-    } else if (sourceIdx < selectedBlockIndex && targetIdx >= selectedBlockIndex) {
-      selectedBlockIndex -= 1;
-    } else if (sourceIdx > selectedBlockIndex && targetIdx <= selectedBlockIndex) {
-      selectedBlockIndex += 1;
-    }
-  }
-
-  const block = builder.blocks[sourceIdx];
-  builder.blocks.splice(sourceIdx, 1);
-  builder.blocks.splice(targetIdx, 0, block);
-  normalizeBlockOrder(builder.blocks);
-  endDragBlock();
-  syncUiStateStore();
-  renderBlocks();
-  renderInspector();
-  updateSaveButtons();
+  return blockOps.dropBlockState(getBlockOpsDeps(), event, targetIdx);
 }
 
 function showAddBlockMenu() {
-  // Show modal or menu to add block type
-  const types = ["TEXT", "IMAGE", "VIDEO"];
-  let html = `<div style="display: flex; gap: 8px; flex-wrap: wrap;">`;
-  types.forEach((type) => {
-    html += `<button class="btn btn-secondary" onclick="addBlockOfType('${type}')">+ ${type}</button>`;
+  return renderHelpers.showAddBlockMenu({
+    addBlockOfType,
   });
-  html += `</div>`;
-  // In a real implementation, you'd show this in a modal
-  // For now, just call the default
-  addBlockOfType("TEXT");
 }
 
 function renderBuilderTypeOptions() {
-  const typeSelect = document.getElementById("builderType");
-  fillSelect(
-    typeSelect,
-    [
-      { value: "idle", label: "Idle" },
-      { value: "visitor", label: "Visitor" },
-      { value: "student", label: "Student" },
-      { value: "menu", label: "Menu" },
-    ],
-    builder.type,
-  );
+  editorView.renderBuilderTypeOptions(getEditorViewDeps());
 }
 
 function renderDuplicateOptions() {
-  const wrap = document.getElementById("duplicateWrap");
-  const select = document.getElementById("duplicateSource");
-  if (!wrap || !select) return;
-
-  if (builder.mode !== "duplicate") {
-    wrap.style.display = "none";
-    builder.sourceId = "";
-    select.innerHTML = "";
-    return;
-  }
-
-  const options = getCampaignsByType(builder.type).map((c) => {
-    const id = builder.type === "student" ? c.nfcUid : c.campaignId;
-    const suffix = builder.type === "student" ? `UID: ${c.nfcUid}` : c.campaignId;
-    return { value: id, label: `${c.campaignName} (${suffix})` };
-  });
-
-  wrap.style.display = "block";
-  if (options.length === 0) {
-    fillSelect(select, [{ value: "", label: "No source available" }], "");
-    builder.sourceId = "";
-    return;
-  }
-
-  if (!builder.sourceId) {
-    builder.sourceId = options[0].value;
-  }
-
-  fillSelect(select, options, builder.sourceId);
+  editorView.renderDuplicateOptions(getEditorViewDeps());
 }
 
 function getBlockIssues(issues, idx, field) {
@@ -466,45 +288,7 @@ function issuePathToInputId(scope, path) {
 }
 
 function renderIssues(targetId, issues, scope) {
-  const el = document.getElementById(targetId);
-  if (!el) return;
-  if (!issues || issues.length === 0) {
-    el.style.display = "none";
-    el.innerHTML = "";
-    return;
-  }
-
-  const blockNotes = issues
-    .filter((i) => /^items\[\d+\]/.test(i.path))
-    .map((i) => {
-      const m = /items\[(\d+)\]/.exec(i.path);
-      const blockIndex = m ? Number(m[1]) + 1 : "?";
-      return `Problem in block ${blockIndex}: ${i.message}`;
-    });
-
-  const summary = Array.from(new Set(blockNotes));
-  const rows = issues
-    .map((i) => {
-      const inputId = issuePathToInputId(scope, i.path);
-      return `<li><a href="#${escapeHtml(inputId)}" data-target="${escapeHtml(inputId)}">${escapeHtml(i.message)}</a></li>`;
-    })
-    .join("");
-  const summaryHtml = summary.map((s) => `<div>${escapeHtml(s)}</div>`).join("");
-
-  el.style.display = "block";
-  el.innerHTML = `${summaryHtml}<ul>${rows}</ul>`;
-
-  el.querySelectorAll("a[data-target]").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      const targetId = link.getAttribute("data-target");
-      const target = document.getElementById(targetId);
-      if (target) {
-        target.focus();
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    });
-  });
+  editorView.renderIssues(getEditorViewDeps(), targetId, issues, scope);
 }
 
 function validateBuilder() {
@@ -528,33 +312,11 @@ function normalizeBlock(block) {
 }
 
 function updateSaveButtons() {
-  builderIssues = validateBuilder();
-  menuIssues = validateMenu();
-  syncUiStateStore();
-
-  renderIssues("builderIssues", builderIssues, "builder");
-  renderIssues("menuIssues", menuIssues, "menu");
-  syncInlineBlockErrors("blocks", builder.blocks, builderIssues);
-  syncInlineBlockErrors("menuBlocks", menuBlocks, menuIssues);
-
-  const nameIssue = builderIssues.find((i) => i.path === "campaignName");
-  const campaignNameErrorEl = document.getElementById("campaignNameError");
-  if (campaignNameErrorEl) campaignNameErrorEl.textContent = nameIssue ? nameIssue.message : "";
-  const uidIssue = builderIssues.find((i) => i.path === "studentUid");
-  const studentUidErrorEl = document.getElementById("studentUidError");
-  if (studentUidErrorEl) studentUidErrorEl.textContent = uidIssue ? uidIssue.message : "";
+  return editorController.updateSaveButtonsState(getControllerDeps());
 }
 
 function syncInlineBlockErrors(containerId, blocks, issues) {
-  const fields = ["contentId", "type", "order", "durationSec", "data"];
-  for (let idx = 0; idx < blocks.length; idx += 1) {
-    for (const field of fields) {
-      const el = document.getElementById(`${containerId}-err-${idx}-${field}`);
-      if (!el) continue;
-      const msg = getBlockIssues(issues, idx, field);
-      el.textContent = msg || "";
-    }
-  }
+  editorView.syncInlineBlockErrors(getEditorViewDeps(), containerId, blocks, issues);
 }
 
 function renderBlockEditor(containerId, blocks, issues, options = {}) {
@@ -570,54 +332,19 @@ function renderBlockEditor(containerId, blocks, issues, options = {}) {
 }
 
 function syncFormFromBuilder() {
-  const campaignNameInput = document.getElementById("campaignNameInput");
-  if (campaignNameInput) campaignNameInput.value = builder.campaignName;
-
-  const typeSelect = document.getElementById("builderType");
-  if (typeSelect) typeSelect.value = builder.type;
-
-  const studentUidInput = document.getElementById("studentUid");
-  if (studentUidInput) studentUidInput.value = builder.studentUid;
-
-  renderDuplicateOptions();
-  renderBlocks();
-  updateSaveButtons();
+  editorView.syncFormFromBuilder(getEditorViewDeps());
 }
 
 function resetBuilderForType(type) {
-  builder.type = type;
-  builder.campaignId = null;
-  builder.mode = "new";
-  builder.sourceId = "";
-  builder.campaignName = "";
-  builder.studentUid = "";
-  builder.blocks = [defaultBlock(1)];
-  syncFormFromBuilder();
+  editorView.resetBuilderForType(getEditorViewDeps(), type);
 }
 
 function setBuilderFromCampaign(campaign, type, studentUid = "") {
-  builder.campaignId = campaign?.campaignId || null;
-  builder.type = type;
-  builder.campaignName = campaign?.campaignName || "";
-  builder.studentUid = studentUid;
-  builder.blocks = Array.isArray(campaign?.items) && campaign.items.length > 0
-    ? campaign.items.map((item) => ({ ...item }))
-    : [defaultBlock(1)];
-  syncFormFromBuilder();
+  editorView.setBuilderFromCampaign(getEditorViewDeps(), campaign, type, studentUid);
 }
 
 function fillInitialData() {
-  renderBuilderTypeOptions();
-
-  if (!builder.blocks.length) {
-    builder.blocks = [defaultBlock(1)];
-  }
-
-  renderSidebar();
-  renderBlocks();
-  renderInspector();
-  updateCampaignHeader();
-  updateSaveButtons();
+  editorView.fillInitialData(getEditorViewDeps());
 }
 
 async function refresh() {
@@ -645,114 +372,27 @@ async function deleteCurrentCampaign() {
 }
 
 function addBlock() {
-  builder.blocks.push(makeBlockByType("TEXT", builder.blocks.length + 1));
-  syncFormFromBuilder();
+  return blockOps.addBlockState(getBlockOpsDeps(), "TEXT");
 }
 
 function addBlockOfType(type) {
-  builder.blocks.push(makeBlockByType(type, builder.blocks.length + 1));
-  syncFormFromBuilder();
+  return blockOps.addBlockState(getBlockOpsDeps(), type);
 }
 
 function addMenuBlock() {
-  menuBlocks.push(makeBlockByType("TEXT", menuBlocks.length + 1));
-  renderBlockEditor("menuBlocks", menuBlocks, menuIssues, { isMenu: true });
-  updateSaveButtons();
+  return blockOps.addMenuBlockState(getBlockOpsDeps());
 }
 
 function removeBlock(containerId, idx) {
-  const target = containerId === "menuBlocks" ? menuBlocks : builder.blocks;
-  if (target.length <= 1) return;
-  target.splice(idx, 1);
-  if (containerId !== "menuBlocks") {
-    normalizeBlockOrder(target);
-    if (selectedBlockIndex !== null) {
-      selectedBlockIndex = Math.min(selectedBlockIndex, target.length - 1);
-    }
-  }
-
-  if (containerId === "menuBlocks") {
-    renderBlockEditor("menuBlocks", menuBlocks, menuIssues, { isMenu: true });
-  } else {
-    renderBlocks();
-    renderInspector();
-  }
-  updateSaveButtons();
+  return blockOps.removeBlockState(getBlockOpsDeps(), containerId, idx);
 }
 
 function moveBlock(containerId, idx, dir) {
-  const target = containerId === "menuBlocks" ? menuBlocks : builder.blocks;
-  const next = idx + dir;
-  if (next < 0 || next >= target.length) return;
-  const tmp = target[idx];
-  target[idx] = target[next];
-  target[next] = tmp;
-  normalizeBlockOrder(target);
-
-  if (containerId === "menuBlocks") {
-    renderBlockEditor("menuBlocks", menuBlocks, menuIssues, { isMenu: true });
-  } else {
-    renderBlocks();
-    renderInspector();
-  }
-  updateSaveButtons();
+  return blockOps.moveBlockState(getBlockOpsDeps(), containerId, idx, dir);
 }
 
 function updateBlockField(containerId, idx, field, value) {
-  const target = containerId === "menuBlocks" ? menuBlocks : builder.blocks;
-  if (!target[idx]) return;
-
-  if (field === "order" || field === "durationSec") {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-      if (field === "order") {
-        setStatus("Invalid block order", false, [{ path: `items[${idx}].order`, message: "Order must be a number >= 1" }]);
-      } else {
-        setStatus("Invalid duration", false, [{ path: `items[${idx}].durationSec`, message: "Duration must be a number >= 1" }]);
-      }
-      return;
-    }
-    target[idx][field] = parsed;
-  } else {
-    target[idx][field] = value;
-  }
-
-  if (field === "type") {
-    // Full reset on type change as requested: new contentId/data/default duration.
-    const currentOrder = Number(target[idx].order) || idx + 1;
-    target[idx] = makeBlockByType(value, currentOrder);
-  }
-
-  if (field === "order") {
-    if (!Number.isInteger(target[idx].order) || target[idx].order < 1) {
-      setStatus("Invalid block order", false, [{ path: `items[${idx}].order`, message: "Order must be an integer >= 1" }]);
-      return;
-    }
-    const selectedContentId = target[idx].contentId;
-    target.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
-    normalizeBlockOrder(target);
-    if (containerId !== "menuBlocks" && selectedContentId) {
-      selectedBlockIndex = target.findIndex((b) => b.contentId === selectedContentId);
-    }
-  }
-
-  if (containerId === "menuBlocks") {
-    if (field === "type") {
-      renderBlockEditor("menuBlocks", menuBlocks, menuIssues, { isMenu: true });
-    } else if (field === "order") {
-      renderBlockEditor("menuBlocks", menuBlocks, menuIssues, { isMenu: true });
-    }
-  } else if (field === "type") {
-    renderBlocks();
-    renderInspector();
-  } else if (field === "order") {
-    renderBlocks();
-    renderInspector();
-  } else {
-    renderBlocks();
-  }
-
-  updateSaveButtons();
+  return blockOps.updateBlockFieldState(getBlockOpsDeps(), containerId, idx, field, value);
 }
 
 async function uploadForBlock(containerId, idx) {
@@ -793,6 +433,27 @@ function bindEvents() {
     },
   });
 }
+
+runtime.renderSidebar = renderSidebar;
+runtime.renderBlocks = renderBlocks;
+runtime.renderInspector = renderInspector;
+runtime.updateCampaignHeader = updateCampaignHeader;
+runtime.renderBlockEditor = renderBlockEditor;
+runtime.syncFormFromBuilder = syncFormFromBuilder;
+runtime.updateSaveButtons = updateSaveButtons;
+runtime.createNewCampaign = createNewCampaign;
+runtime.refresh = refresh;
+runtime.saveBuilderCampaign = saveBuilderCampaign;
+runtime.publishCampaign = publishCampaign;
+runtime.resetBuilderForType = resetBuilderForType;
+runtime.loadCampaignToEditor = loadCampaignToEditor;
+runtime.renderDuplicateOptions = renderDuplicateOptions;
+runtime.renderIssues = renderIssues;
+runtime.syncInlineBlockErrors = syncInlineBlockErrors;
+runtime.setBuilderFromCampaign = setBuilderFromCampaign;
+runtime.fillInitialData = fillInitialData;
+runtime.deleteCampaignUI = deleteCampaignUI;
+runtime.deleteStudentUI = deleteStudentUI;
 
 window.saveBuilderCampaign = saveBuilderCampaign;
 window.publishCampaign = publishCampaign;
