@@ -24,6 +24,6 @@ This directory is for durable project documentation, not working scratchpads.
 
 ## Next Useful Docs
 
-- `docs/deployment/pi.md` for a current Raspberry Pi rollout checklist
+- `docs/deployment/pi.md` for Raspberry Pi install, restart, smoke-check, and rollback flow
 - `docs/adr/` if architecture decisions start drifting again
 - `docs/testing.md` if verification grows beyond the current Makefile/test commands
