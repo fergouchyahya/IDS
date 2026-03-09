@@ -80,6 +80,7 @@ Environment variables are documented in [`.env.example`](/home/fergyah/School/S8
 - [`ROADMAP.md`](/home/fergyah/School/S8/PROJ/Project/ids/ROADMAP.md) - current cleanup and next-work sequence
 - [`API_CONTRACT_BASELINE.md`](/home/fergyah/School/S8/PROJ/Project/ids/API_CONTRACT_BASELINE.md) - endpoint guardrail during refactor
 - [`docs/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/README.md) - doc ownership and what belongs where
+- [`docs/deployment/pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/deployment/pi.md) - Raspberry Pi deployment, smoke checks, and rollback
 - [`admin/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/admin/README.md) - how the admin package is structured
 - [`player/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/player/README.md) - how the player package is structured
 - [`shared/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/shared/README.md) - shared modules and contract assets
