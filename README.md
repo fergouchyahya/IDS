@@ -29,6 +29,8 @@ If you are resuming work, start from the current code and tests, not from older 
 ├── shared/                 Shared runtime helpers and JSON contract
 ├── API_CONTRACT_BASELINE.md
 ├── Makefile
+├── PLAN_OF_WORK.md
+├── REMAINING_WORK_BY_DIFFICULTY.md
 └── ROADMAP.md
 ```
 
@@ -78,6 +80,8 @@ Environment variables are documented in [`.env.example`](/home/fergyah/School/S8
 ## Documentation Map
 
 - [`ROADMAP.md`](/home/fergyah/School/S8/PROJ/Project/ids/ROADMAP.md) - current cleanup and next-work sequence
+- [`PLAN_OF_WORK.md`](/home/fergyah/School/S8/PROJ/Project/ids/PLAN_OF_WORK.md) - phased task breakdown with status tracking
+- [`REMAINING_WORK_BY_DIFFICULTY.md`](/home/fergyah/School/S8/PROJ/Project/ids/REMAINING_WORK_BY_DIFFICULTY.md) - phases ranked by difficulty
 - [`API_CONTRACT_BASELINE.md`](/home/fergyah/School/S8/PROJ/Project/ids/API_CONTRACT_BASELINE.md) - endpoint guardrail during refactor
 - [`docs/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/README.md) - doc ownership and what belongs where
 - [`docs/deployment/pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/deployment/pi.md) - Raspberry Pi deployment, smoke checks, and rollback
