@@ -91,9 +91,10 @@ function buildServices(storage) {
  *
  * @param {object} [options={}] - Server options.
  * @param {number} [options.port=8081] - Server port.
+ * @param {string} [options.host="127.0.0.1"] - Server bind host.
  * @returns {import('http').Server} Started HTTP server instance.
  */
-function createServer({ port = 8081 } = {}) {
+function createServer({ port = 8081, host = "127.0.0.1" } = {}) {
   ensureUploadDir(UPLOAD_DIR);
   const startedAt = Date.now();
 
@@ -157,11 +158,11 @@ function createServer({ port = 8081 } = {}) {
   function handleServerListening() {
     const address = server.address();
     const boundPort = typeof address === "object" && address ? address.port : port;
-    logger.info("server_listening", { url: `http://127.0.0.1:${boundPort}` });
+    logger.info("server_listening", { url: `http://${host}:${boundPort}` });
   }
 
   const server = http.createServer(handleIncomingRequest);
-  server.listen(port, "127.0.0.1", handleServerListening);
+  server.listen(port, host, handleServerListening);
 
   return server;
 }

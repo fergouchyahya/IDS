@@ -24,13 +24,14 @@ const logger = createLogger("ids-player-server");
  *
  * @param {object} [options={}] - Server options.
  * @param {object} options.config - Runtime config object.
+ * @param {string} [options.host="127.0.0.1"] - Listening host.
  * @param {number} [options.port=7070] - Listening port.
  * @param {string} [options.adminUrl] - Admin URL for sync.
  * @param {number} [options.syncIntervalMs=4000] - Runtime sync interval.
  * @param {object} [options.detectorConfig] - Detector config overrides.
  * @returns {import('http').Server} Started HTTP server.
  */
-function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000, detectorConfig } = {}) {
+function createServer({ config, host = "127.0.0.1", port = 7070, adminUrl, syncIntervalMs = 4000, detectorConfig } = {}) {
   const stateMachine = new PlayerStateMachine(config);
   const detectorToken = crypto.randomBytes(18).toString("hex");
   const resolvedDetectorConfig = normalizeDetectorConfig(detectorConfig);
@@ -80,7 +81,7 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000, de
   function handleServerListening() {
     const address = server.address();
     const boundPort = typeof address === "object" && address ? address.port : port;
-    logger.info("server_listening", { url: `http://127.0.0.1:${boundPort}` });
+    logger.info("server_listening", { url: `http://${host}:${boundPort}` });
     logger.info("flow", {
       value: "IDLE -> movement_detected -> MENU -> (visitor_selected|nfc_tap) -> INFO -> inactivity -> IDLE",
     });
@@ -90,7 +91,7 @@ function createServer({ config, port = 7070, adminUrl, syncIntervalMs = 4000, de
   const server = http.createServer(handleIncomingRequest);
 
   server.on("close", handleServerClose);
-  server.listen(port, "127.0.0.1", handleServerListening);
+  server.listen(port, host, handleServerListening);
 
   return server;
 }

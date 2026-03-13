@@ -13,7 +13,9 @@ const { ValidationError } = require("../errors");
  */
 const ENV_SCHEMA = {
   NODE_ENV: { type: "string", default: "production", enum: ["development", "production", "test"] },
+  ADMIN_HOST: { type: "string", default: "127.0.0.1" },
   ADMIN_PORT: { type: "number", default: 8081, min: 1, max: 65535 },
+  PLAYER_HOST: { type: "string", default: "127.0.0.1" },
   PLAYER_PORT: { type: "number", default: 7070, min: 1, max: 65535 },
   IDS_CONFIG: { type: "string", default: "shared/contract/examples/config.welcome.json" },
   IDS_ADMIN_URL: { type: "string", default: "" },
@@ -121,6 +123,7 @@ class Config {
    */
   getAdmin() {
     return {
+      host: this.values.ADMIN_HOST,
       port: this.values.ADMIN_PORT,
       dataDir: this.values.IDS_ADMIN_DATA_DIR,
       publicUrl: this.values.IDS_PUBLIC_ADMIN_URL,
@@ -136,6 +139,7 @@ class Config {
    */
   getPlayer() {
     return {
+      host: this.values.PLAYER_HOST,
       port: this.values.PLAYER_PORT,
       configPath: this.values.IDS_CONFIG,
       adminUrl: this.values.IDS_ADMIN_URL,
