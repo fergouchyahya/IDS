@@ -1,170 +1,261 @@
 # Admin Architecture
 
-This document explains how the admin service is wired and how it turns operator actions into persisted state and player runtime config.
+> The control plane for IDS — where staff configure what the screen shows.
 
-## Purpose
+---
 
-The admin service is the control plane for IDS. It owns:
+## What Admin Owns
 
-- the admin HTTP API
-- the browser admin UI
-- campaign and student data persistence
-- uploaded media files
-- runtime-config projection for the player
+```
+┌─────────────────────────────────────────┐
+│              Admin Service              │
+├─────────────────────────────────────────┤
+│  HTTP API for campaign management       │
+│  Browser-based admin UI                 │
+│  Campaign & student data persistence    │
+│  Media file upload & serving            │
+│  Runtime config projection for player   │
+└─────────────────────────────────────────┘
+```
 
-## Composition Root
+---
 
-The runtime starts here:
+## Layered Architecture
 
-1. [`admin/src/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/index.js) reads config and validates `ADMIN_PORT`.
-2. [`admin/src/server.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/server.js) builds dependencies.
-3. `server.js` creates:
-   - a `FileRepository`
-   - the storage facade from `createStorage`
-   - request body readers
-   - domain services
-   - the router
-4. The HTTP server listens on `127.0.0.1`.
+Every request flows through clean, separated layers:
 
 ```mermaid
 flowchart TD
-    A[index.js] --> B[server.js]
-    B --> C[FileRepository]
-    B --> D[createStorage]
-    B --> E[buildServices]
-    B --> F[createAdminRouter]
-    F --> G[handlers]
-    G --> H[services]
-    H --> D
-    D --> C
+    REQ[HTTP Request] --> Router
+
+    subgraph Router["Router — URL dispatch only"]
+        R[router.js]
+    end
+
+    subgraph Handlers["Handlers — HTTP concerns"]
+        HC[campaigns.js]
+        HCF[config.js]
+        HH[health.js]
+        HM[media.js]
+        HS[state.js]
+        HST[students.js]
+        HU[ui.js]
+    end
+
+    subgraph Services["Services — Domain logic"]
+        SC[campaign-service]
+        SCF[config-service]
+        SH[health-service]
+        SM[media-service]
+        SS[state-service]
+        SST[student-service]
+    end
+
+    subgraph Storage["Storage — State management"]
+        SF[Storage Facade]
+        V[Validators]
+        RM[Runtime Mapper]
+    end
+
+    subgraph Repository["Repository — Persistence"]
+        FR[FileRepository]
+        DISK[(admin/data/state.json)]
+    end
+
+    Router --> Handlers
+    Handlers --> Services
+    Services --> Storage
+    Storage --> Repository
+    FR --> DISK
 ```
 
-## Layer Responsibilities
+### Layer Contracts
 
-### Router
+| Layer | Responsibility | Does NOT do |
+|-------|---------------|-------------|
+| **Router** | URL + method matching | Validate data, mutate state |
+| **Handlers** | Parse body, call service, map HTTP status | Business logic |
+| **Services** | Domain operations, orchestration | Direct disk I/O |
+| **Storage** | Validate, manage state, project runtime config | HTTP concerns |
+| **Repository** | Read/write JSON file, async batching | Business validation |
 
-[`admin/src/router.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/router.js) performs URL and method dispatch only. It does not validate business data or mutate state itself.
+---
 
-### Handlers
+## Composition Root
 
-`admin/src/handlers/*` own HTTP concerns:
+```mermaid
+flowchart TD
+    A[index.js<br/><i>Read config, validate port</i>] --> B[server.js<br/><i>Build all dependencies</i>]
 
-- read request body
-- extract route params
-- call the right service
-- map success to HTTP status codes
-- map validation failures through `sendValidationError`
+    B --> C[FileRepository<br/><i>JSON persistence</i>]
+    B --> D[createStorage<br/><i>Domain facade</i>]
+    B --> E[buildServices<br/><i>Wire services</i>]
+    B --> F[createAdminRouter<br/><i>Route table</i>]
 
-### Services
+    D --> C
+    E --> D
+    F --> G[Handlers]
+    G --> E
 
-`admin/src/services/*` are thin domain APIs. They keep handlers from talking directly to storage details:
+    B --> H[http.createServer<br/><i>Listen on ADMIN_HOST:ADMIN_PORT</i>]
+```
 
-- `campaign-service.js`
-- `config-service.js`
-- `student-service.js`
-- `state-service.js`
-- `health-service.js`
-- `media-service.js`
-
-### Storage
-
-[`admin/src/storage.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/storage.js) is the main domain boundary for persisted admin state. It:
-
-- validates campaign and student payloads
-- manages the full state object
-- updates active campaign selections
-- generates runtime-config projections
-- exposes generated student campaigns from profile data
-
-### Repository
-
-The repository boundary is defined by [`admin/src/storage/admin-repository.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/storage/admin-repository.js).
-
-The current implementation is [`admin/src/storage/repository.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/storage/repository.js), which:
-
-- persists state to a JSON file in the admin data directory
-- batches async writes
-- serves reads from in-memory cached state
-- reports storage health
+---
 
 ## Persistent State Model
 
-The admin state includes:
+The admin state is a single JSON object persisted to disk:
 
-- `settings`
-- `active`
-- `menuCampaign`
-- `idleCampaigns`
-- `visitorCampaigns`
-- `students`
-- `studentProfiles`
-- `updatedAt`
+```mermaid
+classDiagram
+    class AdminState {
+        settings : Object
+        active : Object
+        menuCampaign : Campaign
+        idleCampaigns : Campaign[]
+        visitorCampaigns : Campaign[]
+        students : Map~uid → Campaign~
+        studentProfiles : Map~uid → Profile~
+        updatedAt : ISO timestamp
+    }
 
-Important distinction:
+    class Campaign {
+        campaignId : string
+        campaignName : string
+        campaignPriority : number
+        items : CampaignItem[]
+    }
 
-- `students` stores manual student-to-campaign mappings
-- `studentProfiles` stores profile-style student data used to generate campaigns on demand
+    class CampaignItem {
+        contentId : string
+        type : TEXT | IMAGE | VIDEO
+        data : string
+        order : number
+        durationSec : number
+    }
+
+    class StudentProfile {
+        nfcUid : string
+        displayName : string
+        timetableImageUrl : string
+        nextClassText : string?
+    }
+
+    AdminState "1" --> "*" Campaign
+    Campaign "1" --> "*" CampaignItem
+    AdminState "1" --> "*" StudentProfile
+```
+
+**Key distinction:**
+- `students` — manual student-to-campaign mappings (operator creates the campaign)
+- `studentProfiles` — profile data used to **generate** campaigns on demand
+
+---
 
 ## Runtime Projection
 
-The player does not consume the full admin state. Instead, admin maps it to a runtime view through [`admin/src/storage/runtime-mapper.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/storage/runtime-mapper.js).
-
-That projection returns:
-
-- `settings`
-- `active`
-- `idleCampaign`
-- `menuCampaign`
-- `visitorCampaign`
-- `students`
-- `updatedAt`
-
-Generated student campaigns are exposed separately through `/api/students/:uid/campaign`.
+The player never sees the full admin state. Instead, a mapper creates a normalized view:
 
 ```mermaid
 flowchart LR
-    State[Full admin state] --> Mapper[toRuntimeConfig]
-    Mapper --> Runtime[Player runtime config]
-    Profiles[studentProfiles] --> Generated[Generated student campaign]
-    Generated --> StudentEndpoint[/api/students/:uid/campaign]
+    subgraph "Full Admin State"
+        Settings[settings]
+        Active[active]
+        Menu[menuCampaign]
+        Idle[idleCampaigns ×N]
+        Visitor[visitorCampaigns ×N]
+        Students[students]
+        Profiles[studentProfiles]
+    end
+
+    subgraph "toRuntimeConfig()"
+        Mapper[Runtime Mapper]
+    end
+
+    subgraph "Player Runtime Config"
+        RS[settings]
+        RA[active]
+        RM[menuCampaign]
+        RI[idleCampaign ← active one]
+        RV[visitorCampaign ← active one]
+        RST[students]
+        RU[updatedAt]
+    end
+
+    Settings --> Mapper
+    Active --> Mapper
+    Menu --> Mapper
+    Idle --> Mapper
+    Visitor --> Mapper
+    Students --> Mapper
+    Mapper --> RS & RA & RM & RI & RV & RST & RU
+
+    Profiles -->|/api/students/:uid/campaign| Generated[Generated Campaign]
 ```
 
-## Browser UI Structure
+The player gets:
+- **One** active idle campaign (not all of them)
+- **One** active visitor campaign (not all of them)
+- The menu campaign as-is
+- Student mappings as-is
+- Generated student campaigns via a separate endpoint
 
-The browser UI is served from `admin/public/`.
-
-Important files:
-
-- [`admin/public/index.html`](/home/fergyah/School/S8/PROJ/Project/ids/admin/public/index.html)
-- [`admin/public/admin-ui.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/public/admin-ui.js)
-- [`admin/public/app.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/public/app.js)
-- `admin/public/services/*`
-- `admin/public/components/*`
-- [`admin/public/styles.css`](/home/fergyah/School/S8/PROJ/Project/ids/admin/public/styles.css)
-
-Current shape:
-
-- `admin-ui.js` is still a large orchestration file
-- several responsibilities have already been extracted into service/component modules
-- the server exposes `/admin-ui.js`, `/app.js`, `/styles.css`, `/services/*`, and `/components/*`
+---
 
 ## Media Flow
 
-Media uploads go through `POST /api/media/upload`.
+```mermaid
+sequenceDiagram
+    actor Op as Operator
+    participant UI as Admin UI
+    participant Handler as media handler
+    participant Service as media-service
+    participant Disk as admin/data/uploads/
 
-The flow is:
+    Op->>UI: Select file to upload
+    UI->>Handler: POST /api/media/upload (multipart/form-data)
+    Handler->>Handler: Check content-type
+    Handler->>Service: Process multipart body
+    Service->>Disk: Write file to uploads/
+    Service-->>Handler: Upload metadata
+    Handler-->>UI: 201 { filename, url, ... }
 
-1. `media.js` checks `multipart/form-data`
-2. raw body is read with upload-size limits
-3. `media-service.js` delegates to multipart processing helpers
-4. files are written under `<dataDir>/uploads`
-5. media is later served from `GET /media/:filename`
+    Note over Op: Later, in campaign items...
 
-Generated media URLs depend on `IDS_PUBLIC_ADMIN_URL`.
+    UI->>Handler: GET /media/photo.jpg
+    Handler->>Disk: Read file
+    Handler-->>UI: Binary response + cache headers
+```
 
-## End-To-End Example
+Media URLs depend on `IDS_PUBLIC_ADMIN_URL` — if it points at the wrong hostname, media links break for external clients.
 
-### Operator publishes content for the player
+---
+
+## Browser UI Structure
+
+```
+admin/public/
+├── index.html          HTML shell
+├── admin-ui.js         Main orchestration (large, being decomposed)
+├── app.js              App initialization
+├── styles.css          Styling
+├── components/         Extracted UI components
+│   ├── campaign-editor.js
+│   ├── campaign-list.js
+│   ├── student-manager.js
+│   └── media-uploader.js
+└── services/           Extracted browser-side services
+    ├── api-client.js
+    ├── state-manager.js
+    ├── validation.js
+    └── ...
+```
+
+The UI is **vanilla JavaScript** — no framework, no build step. The server serves these files directly.
+
+---
+
+## End-to-End: Publishing Content
 
 ```mermaid
 sequenceDiagram
@@ -173,27 +264,43 @@ sequenceDiagram
     participant Handler
     participant Service
     participant Storage
-    participant Repo
+    participant Repo as FileRepository
 
     Browser->>Router: POST /api/menu-campaign
     Router->>Handler: handleSetMenuCampaign
+    Handler->>Handler: Parse request body
     Handler->>Service: config.setMenuCampaign(payload)
     Service->>Storage: setMenuCampaign(payload)
+    Storage->>Storage: Validate campaign items
     Storage->>Repo: readState()
+    Repo-->>Storage: Current state
+    Storage->>Storage: Merge new menu campaign
     Storage->>Repo: writeState(nextState)
-    Repo-->>Handler: persisted state
+    Repo->>Repo: Async batch write to disk
+    Repo-->>Storage: Persisted
+    Storage-->>Handler: Updated state
     Handler-->>Browser: 200 { state }
 ```
 
-## Failure Modes To Understand
+---
 
-- invalid JSON returns validation-style errors through shared helpers
-- missing campaigns or students return `not_found` issues
-- invalid uploads return validation errors such as `invalid_content_type`
-- top-level unhandled request failures are trapped in `server.js` and return `500 { error: "internal_error" }`
+## Error Handling
+
+| Scenario | Response |
+|----------|----------|
+| Invalid JSON body | `400 { error: "validation_failed", issues: [...] }` |
+| Missing campaign/student | `404 { error: "validation_failed", issues: ["not_found"] }` |
+| Invalid upload content-type | `400 { error: "validation_failed", issues: ["invalid_content_type"] }` |
+| Unknown route | `404 { error: "not_found: /path" }` |
+| Unhandled server error | `500 { error: "internal_error" }` |
+
+---
 
 ## Related Docs
 
-- Admin API details: [`../api/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/admin.md)
-- Shared config and helpers: [`shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md)
-- Deployment and data directories: [`../operations/deployment-pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/operations/deployment-pi.md)
+| Document | Description |
+|----------|-------------|
+| [Admin API Reference](../api/admin.md) | Every endpoint in detail |
+| [Shared Architecture](shared.md) | Config, validation, helpers used by admin |
+| [Deployment Guide](../operations/deployment-pi.md) | Running admin on the Pi |
+| [Architecture Overview](overview.md) | The full system view |
