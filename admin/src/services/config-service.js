@@ -17,30 +17,30 @@ function createConfigService({ storage }) {
    * Sets active campaign ids.
    *
    * @param {object} payload - Active payload.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function setActive(payload) {
-    return storage.setActiveCampaigns(payload);
+  async function setActive(payload) {
+    return await storage.setActiveCampaigns(payload);
   }
 
   /**
    * Sets global settings.
    *
    * @param {object} payload - Settings patch.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function setSettings(payload) {
-    return storage.setSettings(payload);
+  async function setSettings(payload) {
+    return await storage.setSettings(payload);
   }
 
   /**
    * Sets menu campaign.
    *
    * @param {object} payload - Menu campaign payload.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function setMenuCampaign(payload) {
-    return storage.setMenuCampaign(payload);
+  async function setMenuCampaign(payload) {
+    return await storage.setMenuCampaign(payload);
   }
 
   return {

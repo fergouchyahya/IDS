@@ -1,29 +1,29 @@
-# Docs Guide
+# IDS Docs
 
-This directory is for durable project documentation, not working scratchpads.
+This directory contains the canonical documentation for the `ids/` workspace. The goal is durability: each file here should describe the code as it actually exists now, not a future plan.
 
-## What belongs here
+## Read By Goal
 
-- Architecture notes that still match the running code
-- Deployment notes that match the current `deploy/` files
-- Small decision records when a tradeoff needs to be preserved
-- Contributor guidance that would otherwise bloat the root README
+- New to the project:
+  [`architecture/overview.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/overview.md)
+  [`glossary.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/glossary.md)
+- Seeing what is still unfinished:
+  [`status.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/status.md)
+- Understanding the services:
+  [`architecture/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/admin.md)
+  [`architecture/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/player.md)
+  [`architecture/shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md)
+- Calling the APIs:
+  [`api/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/admin.md)
+  [`api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md)
+- Deploying and operating:
+  [`operations/deployment-pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/operations/deployment-pi.md)
+- Running tests and understanding current verification status:
+  [`testing.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/testing.md)
 
-## What should not live here
+## Documentation Rules
 
-- Large speculative refactor plans
-- Duplicated README content
-- Branch-specific TODO dumps that go stale after one round of changes
-
-## Current Documentation Strategy
-
-- The root [`README.md`](/home/fergyah/School/S8/PROJ/Project/ids/README.md) explains how to run and navigate the repo.
-- [`ROADMAP.md`](/home/fergyah/School/S8/PROJ/Project/ids/ROADMAP.md) is the only root planning document.
-- Package-specific README files explain `admin`, `player`, and `shared`.
-- Module-deep documents should stay near the package they describe unless they are cross-cutting.
-
-## Next Useful Docs
-
-- `docs/deployment/pi.md` for Raspberry Pi install, restart, smoke-check, and rollback flow
-- `docs/adr/` if architecture decisions start drifting again
-- `docs/testing.md` if verification grows beyond the current Makefile/test commands
+- Keep docs source-backed: derive behavior from code, tests, env config, and deploy assets.
+- Keep only one durable status tracker here: [`status.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/status.md). Do not recreate multiple roadmap or worklog files.
+- When the code changes, update the canonical doc instead of adding a second competing note.
+- If an old Markdown file stops matching reality, merge any still-useful content and delete the stale file.

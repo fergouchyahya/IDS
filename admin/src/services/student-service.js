@@ -18,49 +18,49 @@ function createStudentService({ storage }) {
    * Upserts a student mapping.
    *
    * @param {object} payload - Student payload.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function upsert(payload) {
-    return storage.upsertStudent(payload);
+  async function upsert(payload) {
+    return await storage.upsertStudent(payload);
   }
 
   /**
    * Imports student profiles.
    *
    * @param {object} payload - Import payload.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function importProfiles(payload) {
-    return storage.importStudentProfiles(payload);
+  async function importProfiles(payload) {
+    return await storage.importStudentProfiles(payload);
   }
 
   /**
    * Gets generated campaign by uid.
    *
    * @param {string} uid - Student uid.
-   * @returns {object} Generated campaign payload.
+   * @returns {Promise<object>} Generated campaign payload.
    */
-  function getGeneratedCampaign(uid) {
-    return storage.getGeneratedStudentCampaignByUid(uid);
+  async function getGeneratedCampaign(uid) {
+    return await storage.getGeneratedStudentCampaignByUid(uid);
   }
 
   /**
    * Deletes a student mapping.
    *
    * @param {string} uid - Student uid.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function remove(uid) {
-    return storage.deleteStudent(uid);
+  async function remove(uid) {
+    return await storage.deleteStudent(uid);
   }
 
   /**
    * Lists generated student campaigns.
    *
-   * @returns {Array<object>} Generated student campaign list.
+   * @returns {Promise<Array<object>>} Generated student campaign list.
    */
-  function listGeneratedCampaigns() {
-    return storage.listGeneratedStudentCampaigns();
+  async function listGeneratedCampaigns() {
+    return await storage.listGeneratedStudentCampaigns();
   }
 
   return {

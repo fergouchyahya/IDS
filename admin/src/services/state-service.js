@@ -18,14 +18,14 @@ function createStateService({ storage, studentService }) {
   /**
    * Returns full admin state with generated student campaigns.
    *
-   * @returns {object} Full state payload.
+   * @returns {Promise<object>} Full state payload.
    */
-  function getApiState() {
-    const state = storage.readState();
+  async function getApiState() {
+    const state = await storage.readState();
     return {
       state: {
         ...state,
-        generatedStudentCampaigns: studentService.listGeneratedCampaigns(),
+        generatedStudentCampaigns: await studentService.listGeneratedCampaigns(),
       },
     };
   }
@@ -33,10 +33,10 @@ function createStateService({ storage, studentService }) {
   /**
    * Returns runtime config projection for player service.
    *
-   * @returns {object} Runtime config payload.
+   * @returns {Promise<object>} Runtime config payload.
    */
-  function getRuntimeConfig() {
-    const state = storage.readState();
+  async function getRuntimeConfig() {
+    const state = await storage.readState();
     return storage.toRuntimeConfig(state);
   }
 

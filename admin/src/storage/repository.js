@@ -1,10 +1,9 @@
 /**
- * Admin storage repository.
+ * Admin file-backed repository and storage utilities.
  *
  * Responsibilities:
- * - Load and persist state to disk.
- * - Provide state defaults and health info.
- * - Expose shared storage utility primitives.
+ * - FileRepository: async persistence to disk via JSON file.
+ * - Shared storage utility primitives (ValidationError, id generation, etc).
  */
 
 const fs = require("fs");
@@ -13,24 +12,11 @@ const path = require("path");
 const { randomUUID } = require("crypto");
 const { createLogger } = require("../../../shared/utils/logger");
 const { getConfig } = require("../../../shared/config");
+const { AdminRepository } = require("./admin-repository");
 
 const logger = createLogger("ids-admin-storage-repository");
 
-const config = getConfig();
-const configuredDataDir = config.getAdmin().dataDir;
-const DATA_DIR = configuredDataDir
-  ? path.resolve(configuredDataDir)
-  : path.resolve(__dirname, "../../data");
-const DATA_FILE = path.join(DATA_DIR, "state.json");
 const WRITE_BATCH_WINDOW_MS = 100;
-
-let stateCache = null;
-let queuedState = null;
-let pendingWriteTimer = null;
-let writeInFlight = Promise.resolve();
-let hasWriteInFlight = false;
-let lastPersistedAt = null;
-let lastPersistError = null;
 
 /**
  * Validation error type used by admin storage operations.
@@ -218,152 +204,171 @@ function defaultState() {
 }
 
 /**
- * Ensures state cache is loaded from disk or defaults.
- */
-function ensureStateLoaded() {
-  if (stateCache) return;
-
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DATA_FILE)) {
-    const initial = defaultState();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), "utf8");
-    stateCache = initial;
-    lastPersistedAt = nowIso();
-    return;
-  }
-
-  const raw = fs.readFileSync(DATA_FILE, "utf8");
-  const parsed = JSON.parse(raw || "{}");
-
-  stateCache = Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)
-    ? defaultState()
-    : parsed;
-
-  if (!Array.isArray(stateCache.students)) {
-    stateCache.students = [];
-  }
-  if (!Array.isArray(stateCache.studentProfiles)) {
-    stateCache.studentProfiles = [];
-  }
-}
-
-/**
- * Persists queued state snapshot to disk.
- */
-function persistQueuedState() {
-  if (!queuedState) return;
-
-  const snapshot = queuedState;
-  queuedState = null;
-
-  writeInFlight = writeInFlight
-    .then(async () => {
-      hasWriteInFlight = true;
-      await fsp.writeFile(DATA_FILE, JSON.stringify(snapshot, null, 2), "utf8");
-      lastPersistedAt = nowIso();
-      lastPersistError = null;
-    })
-    .catch((err) => {
-      lastPersistError = String(err?.message || err);
-      logger.error("state_persist_failed", { error: lastPersistError });
-    })
-    .finally(() => {
-      hasWriteInFlight = false;
-      if (queuedState) {
-        schedulePersist();
-      }
-    });
-}
-
-/**
- * Schedules next batched write.
- */
-function schedulePersist() {
-  if (pendingWriteTimer) return;
-
-  pendingWriteTimer = setTimeout(() => {
-    pendingWriteTimer = null;
-    persistQueuedState();
-  }, WRITE_BATCH_WINDOW_MS);
-
-  if (typeof pendingWriteTimer.unref === "function") {
-    pendingWriteTimer.unref();
-  }
-}
-
-/**
- * Queues state write operation.
+ * File-backed admin repository implementation.
  *
- * @param {object} nextState - Next state snapshot.
+ * Stores state as a JSON file with batched async writes.
+ * Reads are served from an in-memory cache for speed.
  */
-function queueStateWrite(nextState) {
-  queuedState = nextState;
-  schedulePersist();
-}
+class FileRepository extends AdminRepository {
+  /**
+   * Creates a new FileRepository.
+   *
+   * @param {object} [options={}] - Repository options.
+   * @param {string} [options.dataDir] - Data directory override.
+   */
+  constructor(options = {}) {
+    super();
+    const config = getConfig();
+    const configuredDataDir = options.dataDir || config.getAdmin().dataDir;
+    this.dataDir = configuredDataDir
+      ? path.resolve(configuredDataDir)
+      : path.resolve(__dirname, "../../data");
+    this.dataFile = path.join(this.dataDir, "state.json");
 
-/**
- * Reads current cached state.
- *
- * @returns {object} Current state.
- */
-function readState() {
-  ensureStateLoaded();
-  return stateCache;
-}
-
-/**
- * Writes state and updates updatedAt.
- *
- * @param {object} state - New state.
- * @returns {object} Persisted state snapshot.
- */
-function writeState(state) {
-  const next = {
-    ...state,
-    updatedAt: nowIso(),
-  };
-
-  stateCache = next;
-  queueStateWrite(next);
-  return next;
-}
-
-/**
- * Returns storage health diagnostics.
- *
- * @returns {object} Storage health payload.
- */
-function getStorageHealth() {
-  ensureStateLoaded();
-
-  let fileSizeBytes = 0;
-  try {
-    fileSizeBytes = fs.statSync(DATA_FILE).size;
-  } catch {
-    fileSizeBytes = 0;
+    this.stateCache = null;
+    this.queuedState = null;
+    this.pendingWriteTimer = null;
+    this.writeInFlight = Promise.resolve();
+    this.hasWriteInFlight = false;
+    this.lastPersistedAt = null;
+    this.lastPersistError = null;
   }
 
-  return {
-    dataDir: DATA_DIR,
-    dataFile: DATA_FILE,
-    fileSizeBytes,
-    writeBatchWindowMs: WRITE_BATCH_WINDOW_MS,
-    writePending: Boolean(queuedState || pendingWriteTimer),
-    writeInFlight: hasWriteInFlight,
-    lastPersistedAt,
-    lastPersistError,
-  };
+  /**
+   * Ensures state cache is loaded from disk or defaults.
+   */
+  ensureStateLoaded() {
+    if (this.stateCache) return;
+
+    fs.mkdirSync(this.dataDir, { recursive: true });
+    if (!fs.existsSync(this.dataFile)) {
+      const initial = defaultState();
+      fs.writeFileSync(this.dataFile, JSON.stringify(initial, null, 2), "utf8");
+      this.stateCache = initial;
+      this.lastPersistedAt = nowIso();
+      return;
+    }
+
+    const raw = fs.readFileSync(this.dataFile, "utf8");
+    const parsed = JSON.parse(raw || "{}");
+
+    this.stateCache = Array.isArray(parsed.campaigns) && !Array.isArray(parsed.idleCampaigns)
+      ? defaultState()
+      : parsed;
+
+    if (!Array.isArray(this.stateCache.students)) {
+      this.stateCache.students = [];
+    }
+    if (!Array.isArray(this.stateCache.studentProfiles)) {
+      this.stateCache.studentProfiles = [];
+    }
+  }
+
+  /**
+   * Persists queued state snapshot to disk.
+   */
+  persistQueuedState() {
+    if (!this.queuedState) return;
+
+    const snapshot = this.queuedState;
+    this.queuedState = null;
+
+    this.writeInFlight = this.writeInFlight
+      .then(async () => {
+        this.hasWriteInFlight = true;
+        await fsp.writeFile(this.dataFile, JSON.stringify(snapshot, null, 2), "utf8");
+        this.lastPersistedAt = nowIso();
+        this.lastPersistError = null;
+      })
+      .catch((err) => {
+        this.lastPersistError = String(err?.message || err);
+        logger.error("state_persist_failed", { error: this.lastPersistError });
+      })
+      .finally(() => {
+        this.hasWriteInFlight = false;
+        if (this.queuedState) {
+          this.schedulePersist();
+        }
+      });
+  }
+
+  /**
+   * Schedules next batched write.
+   */
+  schedulePersist() {
+    if (this.pendingWriteTimer) return;
+
+    this.pendingWriteTimer = setTimeout(() => {
+      this.pendingWriteTimer = null;
+      this.persistQueuedState();
+    }, WRITE_BATCH_WINDOW_MS);
+
+    if (typeof this.pendingWriteTimer.unref === "function") {
+      this.pendingWriteTimer.unref();
+    }
+  }
+
+  /**
+   * Reads current cached state.
+   *
+   * @returns {Promise<object>} Current state.
+   */
+  async readState() {
+    this.ensureStateLoaded();
+    return this.stateCache;
+  }
+
+  /**
+   * Writes state and updates updatedAt.
+   *
+   * @param {object} state - New state.
+   * @returns {Promise<object>} Persisted state snapshot.
+   */
+  async writeState(state) {
+    const next = {
+      ...state,
+      updatedAt: nowIso(),
+    };
+
+    this.stateCache = next;
+    this.queuedState = next;
+    this.schedulePersist();
+    return next;
+  }
+
+  /**
+   * Returns storage health diagnostics.
+   *
+   * @returns {Promise<object>} Storage health payload.
+   */
+  async getHealth() {
+    this.ensureStateLoaded();
+
+    let fileSizeBytes = 0;
+    try {
+      fileSizeBytes = fs.statSync(this.dataFile).size;
+    } catch {
+      fileSizeBytes = 0;
+    }
+
+    return {
+      dataDir: this.dataDir,
+      dataFile: this.dataFile,
+      fileSizeBytes,
+      writeBatchWindowMs: WRITE_BATCH_WINDOW_MS,
+      writePending: Boolean(this.queuedState || this.pendingWriteTimer),
+      writeInFlight: this.hasWriteInFlight,
+      lastPersistedAt: this.lastPersistedAt,
+      lastPersistError: this.lastPersistError,
+    };
+  }
 }
 
 module.exports = {
   ValidationError,
-  DATA_DIR,
-  DATA_FILE,
+  FileRepository,
   nowIso,
   makeId,
   issue,
   throwIfIssues,
-  readState,
-  writeState,
-  getStorageHealth,
 };

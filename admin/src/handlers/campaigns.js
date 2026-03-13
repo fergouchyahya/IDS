@@ -28,7 +28,7 @@ function extractCampaignId(pathname) {
 async function handleCreateCampaign(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.campaigns.create(body);
+    const state = await deps.services.campaigns.create(body);
     return json(res, 201, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -48,7 +48,7 @@ async function handleUpdateCampaign(req, res, url, deps) {
   const campaignId = extractCampaignId(url.pathname);
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.campaigns.update(campaignId, body);
+    const state = await deps.services.campaigns.update(campaignId, body);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -62,11 +62,12 @@ async function handleUpdateCampaign(req, res, url, deps) {
  * @param {import('http').ServerResponse} res - HTTP response.
  * @param {URL} url - Parsed URL.
  * @param {object} deps - Handler dependencies.
+ * @returns {Promise<void>}
  */
-function handleDeleteCampaign(req, res, url, deps) {
+async function handleDeleteCampaign(req, res, url, deps) {
   const campaignId = extractCampaignId(url.pathname);
   try {
-    const state = deps.services.campaigns.remove(campaignId);
+    const state = await deps.services.campaigns.remove(campaignId);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);

@@ -29,6 +29,12 @@ async function createAdminTestServer(t) {
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   t.after(async () => {
+    if (typeof server.closeIdleConnections === 'function') {
+      server.closeIdleConnections();
+    }
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
     await new Promise((resolve) => server.close(resolve));
     await new Promise((resolve) => setTimeout(resolve, 150));
     clearAdminModuleCache();
@@ -50,7 +56,7 @@ async function requestJson(baseUrl, pathname, options = {}) {
   };
 }
 
-test('integration: settings and menu campaign updates flow through runtime-config projection', async (t) => {
+test('integration: settings and menu campaign updates flow through runtime-config projection', { concurrency: false }, async (t) => {
   const { baseUrl } = await createAdminTestServer(t);
 
   const settingsResponse = await requestJson(baseUrl, '/api/settings', {
@@ -81,7 +87,7 @@ test('integration: settings and menu campaign updates flow through runtime-confi
   assert.equal(runtimeResponse.body.menuCampaign.items[0].contentId, 'menu-a');
 });
 
-test('integration: student profile import exposes generated campaign via state and campaign endpoint', async (t) => {
+test('integration: student profile import exposes generated campaign via state and campaign endpoint', { concurrency: false }, async (t) => {
   const { baseUrl } = await createAdminTestServer(t);
 
   const importResponse = await requestJson(baseUrl, '/api/students/import', {
@@ -113,7 +119,7 @@ test('integration: student profile import exposes generated campaign via state a
   assert.equal(campaignResponse.body.campaign.items[1].type, 'IMAGE');
 });
 
-test('integration: admin API returns expected validation and not-found errors for common failure paths', async (t) => {
+test('integration: admin API returns expected validation and not-found errors for common failure paths', { concurrency: false }, async (t) => {
   const { baseUrl } = await createAdminTestServer(t);
 
   const activeResponse = await requestJson(baseUrl, '/api/active', {

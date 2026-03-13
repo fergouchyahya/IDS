@@ -1,29 +1,15 @@
 # Player Package
 
-The player package owns the signage runtime:
+`player/` is the signage runtime. It loads a runtime config, renders the display UI, processes events, and can synchronize live configuration from the admin service.
 
-- HTTP server and route handling
-- state machine and inactivity flow
-- runtime-config loading and normalization
-- detector-authenticated event ingestion
-- HTML rendering for the signage UI
+Start here for the real documentation:
 
-## Entry Points
+- Architecture: [`../docs/architecture/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/player.md)
+- API reference: [`../docs/api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md)
+- Testing: [`../docs/testing.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/testing.md)
 
-- [`src/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/index.js) parses startup options and loads config.
-- [`src/server.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/server.js) wires the state machine, router, sync service, and renderer.
+Useful entrypoints:
 
-## Main Layers
-
-- `src/handlers/` - endpoint handlers
-- `src/services/` - state machine, rendering, config, admin sync
-- `src/detector/` - detector client script and event filtering helpers
-- `src/utils/` - response helpers
-
-## Verification
-
-```bash
-npm --prefix player test
-```
-
-See [`PLAYER_MODULES_DOCUMENTATION.md`](/home/fergyah/School/S8/PROJ/Project/ids/player/PLAYER_MODULES_DOCUMENTATION.md) for the detailed runtime walkthrough.
+- [`src/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/index.js)
+- [`src/server.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/server.js)
+- [`src/router.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/router.js)

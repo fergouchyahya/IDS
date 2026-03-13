@@ -14,9 +14,10 @@ const { json } = require("../../../shared/utils/http-helpers");
  * @param {import('http').IncomingMessage} req - HTTP request.
  * @param {import('http').ServerResponse} res - HTTP response.
  * @param {object} deps - Handler dependencies.
+ * @returns {Promise<void>}
  */
-function handleApiState(req, res, deps) {
-  return json(res, 200, deps.services.state.getApiState());
+async function handleApiState(req, res, deps) {
+  return json(res, 200, await deps.services.state.getApiState());
 }
 
 /**
@@ -25,9 +26,10 @@ function handleApiState(req, res, deps) {
  * @param {import('http').IncomingMessage} req - HTTP request.
  * @param {import('http').ServerResponse} res - HTTP response.
  * @param {object} deps - Handler dependencies.
+ * @returns {Promise<void>}
  */
-function handleRuntimeConfigProjection(req, res, deps) {
-  return json(res, 200, deps.services.state.getRuntimeConfig());
+async function handleRuntimeConfigProjection(req, res, deps) {
+  return json(res, 200, await deps.services.state.getRuntimeConfig());
 }
 
 module.exports = {
