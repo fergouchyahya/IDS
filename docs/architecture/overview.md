@@ -1,123 +1,229 @@
 # Architecture Overview
 
-This document explains IDS as a whole before diving into package-level details.
+> IDS has two jobs: let staff decide what appears on the sign, and show the right content at the right time.
 
-## Plain-Language Summary
-
-IDS has two jobs:
-
-- let staff decide what should appear on the sign
-- show the right content on the sign at the right time
-
-The `admin` service handles the first job. The `player` service handles the second. The `shared` package provides the rules and utilities both sides use.
+---
 
 ## System Context
 
 ```mermaid
 flowchart LR
-    Staff[Staff or Operator] -->|Browser| AdminUI[Admin UI]
-    AdminUI -->|HTTP| Admin[Admin Service]
-    Admin -->|JSON state file + uploads| Disk[(Admin data directory)]
-    Admin -->|GET /runtime-config| Player[Player Service]
-    Player -->|Rendered HTML UI| Screen[Display Screen]
-    Motion[Detector or detector script] -->|Authenticated detector events| Player
-    User[Visitor or Student] -->|Movement / NFC-like event| Player
-    Shared[Shared package] -. config validation logging .-> Admin
-    Shared -. config validation logging .-> Player
+    subgraph Operator Side
+        Staff[🖥️ Staff Browser]
+    end
+
+    subgraph Admin Service
+        AdminAPI[HTTP API]
+        AdminUI[Browser Admin UI]
+        Storage[(JSON State + Uploads)]
+    end
+
+    subgraph Player Service
+        SM[State Machine]
+        Renderer[HTML Renderer]
+        Sync[Admin Sync]
+    end
+
+    subgraph Hardware
+        Screen[📺 Display]
+        PIR[👁️ PIR Sensor]
+        NFC[📱 NFC Reader]
+    end
+
+    subgraph Shared
+        Config[Config]
+        Valid[Validation]
+        Log[Logger]
+    end
+
+    Staff --> AdminUI
+    AdminUI --> AdminAPI
+    AdminAPI --> Storage
+    Sync -->|GET /runtime-config| AdminAPI
+    SM --> Renderer --> Screen
+    PIR -->|movement| SM
+    NFC -->|nfc_tap| SM
+    Config -.-> AdminAPI
+    Config -.-> SM
+    Valid -.-> AdminAPI
+    Valid -.-> SM
+    Log -.-> AdminAPI
+    Log -.-> SM
 ```
 
-## Main Responsibilities
+---
 
-### Admin
-
-- owns campaign and student-related configuration
-- stores persistent state in a JSON file through `FileRepository`
-- serves the browser admin UI and uploaded media
-- exposes `/runtime-config` so the player can fetch a normalized runtime view
-
-### Player
-
-- loads a startup config from disk
-- keeps an in-memory state machine for the current screen state
-- renders the display UI as HTML
-- accepts user and detector events
-- optionally refreshes runtime config and student campaigns from admin
-
-### Shared
-
-- validates environment configuration
-- provides error and validation helpers
-- provides JSON response helpers and logger utilities
-- ships the JSON schema and example config used by the player contract
-
-## Runtime Wiring
+## Service Responsibilities
 
 ```mermaid
 flowchart TD
-    A[admin/src/index.js] --> B[admin/src/server.js]
-    B --> C[createAdminRouter]
-    B --> D[buildServices]
-    D --> E[createStorage]
-    E --> F[FileRepository]
+    subgraph Admin["Admin — The Control Plane"]
+        direction TB
+        A1[Campaign & student configuration]
+        A2[Persistent state in JSON file]
+        A3[Browser admin UI serving]
+        A4[Media upload & serving]
+        A5[Runtime config projection for player]
+    end
 
-    G[player/src/index.js] --> H[player/src/server.js]
-    H --> I[createPlayerRouter]
-    H --> J[PlayerStateMachine]
-    H --> K[AdminSyncService]
-    H --> L[render-service]
+    subgraph Player["Player — The Display Runtime"]
+        direction TB
+        P1[Startup config loading]
+        P2[In-memory state machine]
+        P3[Full-screen HTML rendering]
+        P4[Event ingestion — motion, NFC, scroll]
+        P5[Optional live sync from admin]
+    end
+
+    subgraph Shared["Shared — The Common Ground"]
+        direction TB
+        S1[Environment config parsing]
+        S2[Validation & error types]
+        S3[HTTP helpers & structured logging]
+        S4[JSON Schema contract]
+    end
 ```
+
+---
+
+## Runtime Wiring
+
+How each service boots and assembles its dependencies:
+
+```mermaid
+flowchart TD
+    subgraph Admin Boot
+        AI[index.js] --> AS[server.js]
+        AS --> FR[FileRepository]
+        AS --> ST[createStorage]
+        AS --> SV[buildServices]
+        AS --> AR[createAdminRouter]
+        AR --> AH[Handlers]
+        AH --> SV
+        SV --> ST --> FR
+    end
+
+    subgraph Player Boot
+        PI[index.js] --> PS[server.js]
+        PS --> PSM[PlayerStateMachine]
+        PS --> SYNC[AdminSyncService]
+        PS --> PR[createPlayerRouter]
+        PR --> PH[Handlers]
+        PH --> PSM
+        PH --> SYNC
+    end
+```
+
+---
 
 ## How Data Moves
 
+### Content Publishing Flow
+
 ```mermaid
 sequenceDiagram
-    participant Operator
-    participant AdminUI
-    participant Admin
-    participant Storage
-    participant Player
+    actor Op as Operator
+    participant UI as Admin UI
+    participant Admin as Admin Service
+    participant Disk as File Storage
+    participant Player as Player Service
+    participant Screen as 📺 Display
 
-    Operator->>AdminUI: Create or update campaign
-    AdminUI->>Admin: POST /api/campaigns or config endpoints
-    Admin->>Storage: Validate and persist state
-    Storage-->>Admin: Updated state
-    Admin-->>AdminUI: JSON response
+    Op->>UI: Create/edit campaign
+    UI->>Admin: POST /api/campaigns
+    Admin->>Admin: Validate payload
+    Admin->>Disk: Persist state (async batch)
+    Admin-->>UI: 200 { state }
+
+    Note over Player,Admin: Player syncs periodically or on event
+
     Player->>Admin: GET /runtime-config
-    Admin-->>Player: Normalized runtime config
-    Player->>Player: Apply runtime config to state machine
+    Admin-->>Player: Normalized runtime view
+    Player->>Player: Apply to state machine
+    Player->>Screen: Re-render display
 ```
-
-## Core Architectural Rules
-
-- Admin follows `router -> handler -> service -> storage`.
-- Player follows `router -> handler -> state/service`.
-- `shared/` contains reusable code only; it does not own runtime state.
-- Admin persistence is behind an async repository interface.
-- Player runtime state is in memory; it is not persisted by the player itself.
-
-## Important User Flows
-
-### Content Management Flow
-
-1. An operator edits campaigns or student data in the admin UI.
-2. Admin handlers parse the request and delegate to services.
-3. Services call the storage facade.
-4. The storage facade validates input, updates state, and writes through the repository.
-5. The player later consumes the normalized runtime projection.
 
 ### Display Interaction Flow
 
-1. The player starts in `IDLE`.
-2. Movement moves the player to `MENU`.
-3. A visitor selection opens the visitor campaign.
-4. An NFC-style event attempts to resolve a student and show student info.
-5. Inactivity returns the player to `IDLE`.
+```mermaid
+sequenceDiagram
+    actor Person
+    participant PIR as 👁️ Motion Sensor
+    participant Player as Player Service
+    participant Screen as 📺 Display
+    participant NFC as 📱 NFC Reader
+    participant Admin as Admin Service
+
+    Note over Player: State: IDLE (looping idle campaign)
+
+    Person->>PIR: Walks by
+    PIR->>Player: POST /detector/movement
+    Player->>Screen: Show MENU
+
+    Person->>NFC: Taps student card
+    NFC->>Player: POST /events {nfc_tap, uid}
+    Player->>Admin: GET /api/students/:uid/campaign
+    Admin-->>Player: Generated student campaign
+    Player->>Screen: Show STUDENT_INFO
+
+    Note over Player: Inactivity timeout...
+    Player->>Screen: Return to IDLE
+```
+
+---
+
+## Core Architectural Rules
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│  Admin:   Router → Handler → Service → Storage → Repository │
+│  Player:  Router → Handler → Service / State Machine         │
+│  Shared:  Reusable code only — no runtime state ownership    │
+│                                                              │
+│  Admin persistence:  Async, repository-backed                │
+│  Player state:       In-memory only, not persisted           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Campaign Lifecycle
+
+```mermaid
+flowchart LR
+    subgraph Admin
+        Create[Create Campaign] --> Store[Persist to Disk]
+        Store --> Project[Generate Runtime Projection]
+    end
+
+    subgraph Player
+        Fetch[Fetch /runtime-config] --> Apply[Apply to State Machine]
+        Apply --> Render[Render on Screen]
+    end
+
+    Project -->|HTTP| Fetch
+```
+
+### Campaign Types
+
+| Type | When It Shows | Trigger |
+|------|--------------|---------|
+| **Idle** | No one is interacting | Default / inactivity timeout |
+| **Menu** | Someone is detected | `movement_detected` event |
+| **Visitor** | Generic visitor path selected | `visitor_selected` event |
+| **Student** | Student identified by NFC | `nfc_tap` with known UID |
+
+---
 
 ## Documentation Map
 
-- Beginner terms: [`../glossary.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/glossary.md)
-- Admin internals: [`admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/admin.md)
-- Player internals: [`player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/player.md)
-- Shared internals: [`shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md)
-- Admin API: [`../api/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/admin.md)
-- Player API: [`../api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md)
+| Next Read | What You'll Learn |
+|-----------|-------------------|
+| [Glossary](../glossary.md) | All IDS terminology explained |
+| [Admin Architecture](admin.md) | Admin internals — layers, persistence, UI, media |
+| [Player Architecture](player.md) | Player internals — state machine, events, rendering |
+| [Shared Architecture](shared.md) | Common code — config, validation, logging, contract |
+| [Admin API](../api/admin.md) | Full admin endpoint reference |
+| [Player API](../api/player.md) | Full player endpoint reference |
