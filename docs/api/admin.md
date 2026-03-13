@@ -1,213 +1,332 @@
-# Admin API
+# Admin API Reference
 
-This reference describes the admin HTTP surface as implemented by [`admin/src/router.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/router.js) in the current working tree.
+> Every HTTP endpoint the admin service exposes.
+
+---
+
+## Overview
+
+```mermaid
+flowchart LR
+    subgraph "UI & Assets"
+        GET_ROOT["GET /"]
+        GET_JS["GET /admin-ui.js"]
+        GET_CSS["GET /styles.css"]
+        GET_APP["GET /app.js"]
+        GET_SVC["GET /services/*"]
+        GET_CMP["GET /components/*"]
+    end
+
+    subgraph "Health & State"
+        GET_HEALTH["GET /health"]
+        GET_STATE["GET /api/state"]
+        GET_RC["GET /runtime-config"]
+    end
+
+    subgraph "Campaigns"
+        POST_CAMP["POST /api/campaigns"]
+        PUT_CAMP["PUT /api/campaigns/:id"]
+        DEL_CAMP["DELETE /api/campaigns/:id"]
+    end
+
+    subgraph "Config"
+        POST_ACTIVE["POST /api/active"]
+        POST_SETTINGS["POST /api/settings"]
+        POST_MENU["POST /api/menu-campaign"]
+    end
+
+    subgraph "Students"
+        POST_STU["POST /api/students"]
+        POST_IMP["POST /api/students/import"]
+        GET_STU_C["GET /api/students/:uid/campaign"]
+        DEL_STU["DELETE /api/students/:uid"]
+    end
+
+    subgraph "Media"
+        POST_UPLOAD["POST /api/media/upload"]
+        GET_MEDIA["GET /media/:filename"]
+    end
+```
 
 ## Contract Policy
 
-- Route paths and methods are part of the control-plane contract.
-- Handlers generally return validation-style error payloads for bad input:
-  `{"error":"validation_failed","issues":[...]}`
-- Unknown routes return `404` with `{"error":"not_found: /path"}` for admin API paths.
-- Successful mutation endpoints usually return a `{ state }` wrapper containing the updated full admin state.
+- Validation errors return `{ error: "validation_failed", issues: [...] }`
+- Unknown routes return `404 { error: "not_found: /path" }`
+- Successful mutations return `{ state }` with the full updated admin state
 
-## UI And Static Assets
+---
+
+## UI & Static Assets
 
 ### `GET /`
 
-- Handler: `handlers/ui.js`
-- Purpose: return the server-rendered admin HTML shell
-- Response: `200 text/html`
+Serves the admin HTML shell.
 
-### `GET /admin-ui.js`
+| Field | Value |
+|-------|-------|
+| Handler | `handlers/ui.js` |
+| Response | `200 text/html` |
 
-- Handler: `handlers/ui.js`
-- Purpose: return the main browser admin script
-- Response: `200 application/javascript`
+### `GET /admin-ui.js` · `GET /app.js` · `GET /styles.css`
 
-### `GET /styles.css`
+Serve the main browser scripts and styles.
 
-- Handler: `handlers/ui.js`
-- Purpose: return admin UI styles
-- Response: `200 text/css`
+| Field | Value |
+|-------|-------|
+| Handler | `handlers/ui.js` |
+| Response | `200` with appropriate content type |
 
-### `GET /app.js`
+### `GET /services/*` · `GET /components/*`
 
-- Handler: `handlers/ui.js`
-- Purpose: return additional admin browser code
-- Response: `200 application/javascript`
+Serve extracted browser-side service and component modules.
 
-### `GET /services/*`
+---
 
-- Handler: `handlers/ui.js`
-- Purpose: serve extracted browser service modules under `admin/public/services/`
-- Response: `200 application/javascript`
-
-### `GET /components/*`
-
-- Handler: `handlers/ui.js`
-- Purpose: serve extracted browser component modules under `admin/public/components/`
-- Response: `200 application/javascript`
-
-## Health And State
+## Health & State
 
 ### `GET /health`
 
-- Handler: `handlers/health.js`
-- Purpose: report service and storage health
-- Response body includes:
-  - `status`
-  - `timestamp`
-  - `uptimeMs`
-  - `storage`
+Service and storage health.
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-13T10:00:00.000Z",
+  "uptimeMs": 86400000,
+  "storage": { "status": "ok" }
+}
+```
 
 ### `GET /api/state`
 
-- Handler: `handlers/state.js`
-- Purpose: return the full persisted admin state plus generated student campaigns
-- Response body:
-  - `state.settings`
-  - `state.active`
-  - `state.menuCampaign`
-  - `state.idleCampaigns`
-  - `state.visitorCampaigns`
-  - `state.students`
-  - `state.studentProfiles`
-  - `state.generatedStudentCampaigns`
-  - `state.updatedAt`
+The full persisted admin state plus generated student campaigns.
+
+```json
+{
+  "state": {
+    "settings": { ... },
+    "active": { "idleCampaignId": "...", "visitorCampaignId": "..." },
+    "menuCampaign": { ... },
+    "idleCampaigns": [ ... ],
+    "visitorCampaigns": [ ... ],
+    "students": { ... },
+    "studentProfiles": { ... },
+    "generatedStudentCampaigns": { ... },
+    "updatedAt": "2026-03-13T10:00:00.000Z"
+  }
+}
+```
 
 ### `GET /runtime-config`
 
-- Handler: `handlers/state.js`
-- Purpose: return the normalized player runtime projection
-- Response body includes:
-  - `settings`
-  - `active`
-  - `idleCampaign`
-  - `menuCampaign`
-  - `visitorCampaign`
-  - `students`
-  - `updatedAt`
+The normalized projection consumed by the player.
 
-## Media
+```json
+{
+  "settings": { ... },
+  "active": { ... },
+  "idleCampaign": { ... },
+  "menuCampaign": { ... },
+  "visitorCampaign": { ... },
+  "students": { ... },
+  "updatedAt": "2026-03-13T10:00:00.000Z"
+}
+```
 
-### `GET /media/:filename`
+```mermaid
+flowchart LR
+    Full[Full Admin State<br/><i>multiple campaigns per type</i>] -->|toRuntimeConfig| Projected[Runtime Config<br/><i>one active campaign per type</i>]
+```
 
-- Handler: `handlers/media.js`
-- Purpose: serve uploaded media from the upload directory
-- Success response: binary body with `Content-Type`, `Content-Length`, and cache headers
-- Common failures:
-  - invalid path: `400 validation_failed`
-  - missing file: `404 validation_failed`
-
-### `POST /api/media/upload`
-
-- Handler: `handlers/media.js`
-- Purpose: upload one media file via `multipart/form-data`
-- Success response: `201` with upload metadata returned by the media service
-- Common failure:
-  - non-multipart requests return `400 validation_failed` with `invalid_content_type`
+---
 
 ## Campaign Management
 
 ### `POST /api/campaigns`
 
-- Handler: `handlers/campaigns.js`
-- Purpose: create a new idle or visitor campaign
-- Expected body:
-  - `kind`: `idle` or `visitor`
-  - `campaignName`
-  - `items`
-- Success response: `201 { state }`
+Create a new idle or visitor campaign.
+
+**Request body:**
+```json
+{
+  "kind": "idle | visitor",
+  "campaignName": "Welcome Loop",
+  "items": [
+    {
+      "contentId": "item-1",
+      "type": "TEXT",
+      "data": "Welcome to our school!",
+      "order": 1,
+      "durationSec": 5
+    }
+  ]
+}
+```
+
+**Response:** `201 { state }`
 
 ### `PUT /api/campaigns/:id`
 
-- Handler: `handlers/campaigns.js`
-- Purpose: update campaign name and/or items
-- Success response: `200 { state }`
+Update an existing campaign's name and/or items.
+
+**Response:** `200 { state }`
 
 ### `DELETE /api/campaigns/:id`
 
-- Handler: `handlers/campaigns.js`
-- Purpose: delete an existing campaign and repair active selections if needed
-- Success response: `200 { state }`
+Delete a campaign. Repairs active selections if the deleted campaign was active.
 
-## Active Config And Settings
+**Response:** `200 { state }`
+
+---
+
+## Active Config & Settings
 
 ### `POST /api/active`
 
-- Handler: `handlers/config.js`
-- Purpose: update active idle and visitor campaign ids
-- Body can include:
-  - `idleCampaignId`
-  - `visitorCampaignId`
-- Success response: `200 { state }`
-- Missing referenced campaigns return `404 validation_failed`
+Set which idle and visitor campaigns are active.
+
+**Request body:**
+```json
+{
+  "idleCampaignId": "campaign-uuid",
+  "visitorCampaignId": "campaign-uuid"
+}
+```
+
+**Response:** `200 { state }`
+**Error:** `404` if referenced campaign doesn't exist
 
 ### `POST /api/settings`
 
-- Handler: `handlers/config.js`
-- Purpose: update global settings
-- Supported body:
-  - `inactivityTimeoutMs`
-- Success response: `200 { state }`
+Update global settings.
+
+**Request body:**
+```json
+{
+  "inactivityTimeoutMs": 30000
+}
+```
+
+**Response:** `200 { state }`
 
 ### `POST /api/menu-campaign`
 
-- Handler: `handlers/config.js`
-- Purpose: replace the menu campaign
-- Body:
-  - `campaignName`
-  - `items`
-- Success response: `200 { state }`
+Replace the menu campaign.
+
+**Request body:**
+```json
+{
+  "campaignName": "Main Menu",
+  "items": [ ... ]
+}
+```
+
+**Response:** `200 { state }`
+
+---
 
 ## Student Data
 
 ### `POST /api/students`
 
-- Handler: `handlers/students.js`
-- Purpose: create or replace a manual student campaign mapping
-- Body:
-  - `nfcUid`
-  - `name`
-  - `items`
-- Success response: `200 { state }`
+Create or replace a manual student-to-campaign mapping.
+
+**Request body:**
+```json
+{
+  "nfcUid": "ABC123",
+  "name": "Alice",
+  "items": [ ... ]
+}
+```
+
+**Response:** `200 { state }`
 
 ### `POST /api/students/import`
 
-- Handler: `handlers/students.js`
-- Purpose: replace `studentProfiles` with profile-style input used for generated campaigns
-- Body:
-  - `students`: array of objects with `nfcUid`, `displayName`, `timetableImageUrl`, optional `nextClassText`
-- Success response:
-  - `200`
-  - `{ state, imported }`
+Bulk import student profiles for auto-generated campaigns.
+
+**Request body:**
+```json
+{
+  "students": [
+    {
+      "nfcUid": "ABC123",
+      "displayName": "Alice",
+      "timetableImageUrl": "/media/timetable-alice.png",
+      "nextClassText": "Math — Room 204"
+    }
+  ]
+}
+```
+
+**Response:** `200 { state, imported }`
 
 ### `GET /api/students/:uid/campaign`
 
-- Handler: `handlers/students.js`
-- Purpose: build and return the generated campaign for a student profile
-- Success response:
-  - `200`
-  - `{ nfcUid, name, campaign }`
-- Failure:
-  - unknown UID returns `404 validation_failed`
+Get a generated campaign for a student profile.
+
+**Response:**
+```json
+{
+  "nfcUid": "ABC123",
+  "name": "Alice",
+  "campaign": { ... }
+}
+```
+
+**Error:** `404` if UID not found in profiles
 
 ### `DELETE /api/students/:uid`
 
-- Handler: `handlers/students.js`
-- Purpose: delete a manual student mapping from `state.students`
-- Success response: `200 { state }`
+Remove a manual student mapping.
 
-## Validation Expectations
+**Response:** `200 { state }`
 
-Campaign item validation currently enforces:
+---
 
-- at least one item
-- unique `contentId` values within a campaign
-- `type` in `TEXT | IMAGE | VIDEO`
-- integer `order >= 1`
-- integer `durationSec >= 1`
-- non-empty `data`
-- image/profile URLs limited to `/media/*` or `http(s)` for profile imports
+## Media
 
-For the exact rules, see [`admin/src/storage/validators.js`](/home/fergyah/School/S8/PROJ/Project/ids/admin/src/storage/validators.js).
+### `POST /api/media/upload`
+
+Upload a file via `multipart/form-data`.
+
+**Response:** `201` with upload metadata
+**Error:** `400` with `invalid_content_type` if not multipart
+
+### `GET /media/:filename`
+
+Serve an uploaded file.
+
+**Response:** Binary body with `Content-Type`, `Content-Length`, cache headers
+**Errors:**
+- `400` — invalid path
+- `404` — file not found
+
+---
+
+## Validation Rules
+
+Campaign items are validated with these constraints:
+
+| Rule | Constraint |
+|------|-----------|
+| Items | At least one required |
+| `contentId` | Unique within campaign |
+| `type` | `TEXT`, `IMAGE`, or `VIDEO` |
+| `order` | Integer >= 1 |
+| `durationSec` | Integer >= 1 |
+| `data` | Non-empty string |
+| Image/profile URLs | Must be `/media/*` or `http(s)://...` |
+
+Full rules: `admin/src/storage/validators.js`
+
+---
+
+## Related Docs
+
+| Document | Description |
+|----------|-------------|
+| [Admin Architecture](../architecture/admin.md) | Internal layers and design |
+| [Player API](player.md) | The other service's endpoints |
+| [Architecture Overview](../architecture/overview.md) | System-level view |

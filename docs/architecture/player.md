@@ -1,165 +1,239 @@
 # Player Architecture
 
-This document explains how the player service starts, how it renders content, and how events drive the display.
+> The display runtime — it renders content and reacts to the world around it.
 
-## Purpose
+---
 
-The player service is the runtime that appears on the display. It owns:
+## What Player Owns
 
-- startup config loading
-- runtime config normalization
-- the in-memory state machine
-- event ingestion
-- detector-authenticated endpoints
-- HTML rendering for the display UI
-- optional synchronization with the admin service
+```
+┌─────────────────────────────────────────┐
+│             Player Service              │
+├─────────────────────────────────────────┤
+│  Startup config loading                 │
+│  Runtime config normalization           │
+│  In-memory state machine                │
+│  Event ingestion (motion, NFC, scroll)  │
+│  Detector-authenticated endpoints       │
+│  Full-screen HTML rendering             │
+│  Optional live sync with admin          │
+└─────────────────────────────────────────┘
+```
+
+---
 
 ## Composition Root
 
-Startup begins in [`player/src/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/index.js):
-
-1. parse CLI arguments and environment-based defaults
-2. load the runtime config JSON file
-3. optionally load detector config JSON
-4. validate the runtime config with `normalizeRuntimeConfig`
-5. call [`player/src/server.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/server.js)
-
-`server.js` then creates:
-
-- `PlayerStateMachine`
-- a random detector token
-- normalized detector config
-- `AdminSyncService`
-- the player router
-
 ```mermaid
 flowchart TD
-    A[index.js] --> B[load config]
-    B --> C[normalizeRuntimeConfig]
-    C --> D[server.js]
-    D --> E[PlayerStateMachine]
-    D --> F[AdminSyncService]
-    D --> G[createPlayerRouter]
-    G --> H[handlers]
-    H --> E
-    H --> F
+    A[index.js<br/><i>Parse CLI args + env defaults</i>]
+    A --> B[Load runtime config JSON]
+    B --> C[Load detector config JSON<br/><i>optional</i>]
+    C --> D[normalizeRuntimeConfig]
+    D --> E[server.js]
+
+    E --> F[PlayerStateMachine<br/><i>Core display logic</i>]
+    E --> G[Random detector token<br/><i>Auth for sensor endpoints</i>]
+    E --> H[AdminSyncService<br/><i>Live config from admin</i>]
+    E --> I[createPlayerRouter]
+
+    I --> J[Handlers]
+    J --> F
+    J --> H
 ```
 
-## Runtime State Machine
+---
 
-The core logic lives in [`player/src/services/state-machine.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/services/state-machine.js).
+## The State Machine
 
-The main states are:
-
-- `IDLE`
-- `MENU`
-- `VISITOR_INFO`
-- `STUDENT_INFO`
-
-### Transition Rules
+The heart of the player. It tracks what's on screen and how events change it.
 
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
-    IDLE --> MENU: movement_detected
-    MENU --> VISITOR_INFO: visitor_selected
-    MENU --> STUDENT_INFO: nfc_tap with known student
-    VISITOR_INFO --> STUDENT_INFO: nfc_tap with known student
-    STUDENT_INFO --> STUDENT_INFO: nfc_tap with another known student
-    VISITOR_INFO --> MENU: nfc_tap unknown student
-    STUDENT_INFO --> MENU: nfc_tap unknown student
-    MENU --> IDLE: inactivity timeout
-    VISITOR_INFO --> IDLE: inactivity timeout
-    STUDENT_INFO --> IDLE: inactivity timeout
+
+    IDLE --> MENU : 👁️ movement_detected
+
+    MENU --> VISITOR_INFO : 🖱️ visitor_selected
+    MENU --> STUDENT_INFO : 📱 nfc_tap (known student)
+    MENU --> IDLE : ⏱️ inactivity timeout
+
+    VISITOR_INFO --> STUDENT_INFO : 📱 nfc_tap (known student)
+    VISITOR_INFO --> IDLE : ⏱️ inactivity timeout
+
+    STUDENT_INFO --> STUDENT_INFO : 📱 nfc_tap (different student)
+    STUDENT_INFO --> IDLE : ⏱️ inactivity timeout
+
+    state IDLE {
+        [*] --> LoopingIdleCampaign
+        note right of LoopingIdleCampaign
+            Shows idle campaign items
+            on a timed rotation
+        end note
+    }
+
+    state MENU {
+        [*] --> ShowingMenuOptions
+        note right of ShowingMenuOptions
+            Interactive menu
+            Visitor / Student paths
+        end note
+    }
+
+    state STUDENT_INFO {
+        [*] --> ShowingStudentCampaign
+        note right of ShowingStudentCampaign
+            Personalized content
+            from profile or manual mapping
+        end note
+    }
 ```
 
 ### What The State Machine Tracks
 
-- current state
-- current campaign
-- current item index
-- current student UID
-- inactivity timeout
-- normalized runtime config
+| Field | Purpose |
+|-------|---------|
+| `state` | Current screen state (IDLE, MENU, VISITOR_INFO, STUDENT_INFO) |
+| `campaignId` | Active campaign being displayed |
+| `campaignName` | Human-readable campaign label |
+| `itemIndex` | Current item in the campaign rotation |
+| `currentStudentUid` | NFC UID of the identified student (if any) |
+| `inactivityTimeoutMs` | How long before returning to IDLE |
+| `runtimeUpdatedAt` | Timestamp of last config update |
 
-`getStatus()` is the main state snapshot used by `/current`, `/health`, `/runtime-config` application responses, and the renderer.
+---
 
 ## Event Sources
 
-### Regular Event Endpoint
+Three ways events reach the player:
 
-`POST /events` accepts UI/manual events. It rejects movement events from this route so motion input must come through the detector-authenticated endpoints.
+```mermaid
+flowchart LR
+    subgraph "UI / Manual"
+        Browser[Admin UI<br/>Debug Controls]
+    end
 
-### Detector Endpoints
+    subgraph "Sensors (Authenticated)"
+        PIR[👁️ PIR Sensor]
+        NFC[📱 NFC Reader]
+    end
 
-- `POST /detector/movement`
-- `POST /detector/events`
+    Browser -->|POST /events| Player[Player<br/>State Machine]
+    PIR -->|POST /detector/movement| Player
+    NFC -->|POST /detector/events| Player
+```
 
-These require the `x-detector-token` header to match the random token generated at boot.
+| Source | Endpoint | Auth Required | Events |
+|--------|----------|---------------|--------|
+| UI / Manual | `POST /events` | No | All except `movement_detected` |
+| Motion sensor | `POST /detector/movement` | `x-detector-token` | Always `movement_detected` |
+| NFC / Detector | `POST /detector/events` | `x-detector-token` | Filtered by allowed types |
 
-### Admin-Sync-Assisted NFC Flow
+### Event Normalization
 
-When admin sync is configured and the player receives an NFC-like event in `MENU`, `VISITOR_INFO`, or `STUDENT_INFO`:
+The state machine normalizes aliases automatically:
 
-1. the player refreshes runtime config from admin
-2. it requests `/api/students/:uid/campaign`
-3. if admin returns a generated campaign, the player injects that student into the runtime state
-4. the state machine then transitions to `STUDENT_INFO`
+```
+movement, vision_present  →  movement_detected
+visitor_detected          →  visitor_selected
+nfc                       →  nfc_tap
+right_hand_move           →  scroll_next
+left_hand_move            →  scroll_prev
+```
+
+---
+
+## NFC Student Flow
+
+The most complex interaction — identifying a student and showing personalized content:
 
 ```mermaid
 sequenceDiagram
-    participant EventSource
-    participant PlayerHandler
-    participant Sync
-    participant Admin
-    participant StateMachine
+    actor Student
+    participant NFC as 📱 NFC Reader
+    participant Handler as Event Handler
+    participant Sync as AdminSyncService
+    participant Admin as Admin Service
+    participant SM as State Machine
+    participant Screen as 📺 Display
 
-    EventSource->>PlayerHandler: POST /events { type: nfc_tap, nfcUid }
-    PlayerHandler->>Sync: syncRuntime()
-    Sync->>Admin: GET /runtime-config
-    Admin-->>Sync: runtime config
-    PlayerHandler->>Sync: loadStudentCampaign(uid)
-    Sync->>Admin: GET /api/students/:uid/campaign
-    Admin-->>Sync: generated student campaign
-    PlayerHandler->>StateMachine: upsertRuntimeStudent()
-    PlayerHandler->>StateMachine: handleEvent()
+    Student->>NFC: Tap card
+    NFC->>Handler: POST /events {type: nfc_tap, nfcUid: "ABC123"}
+
+    rect rgb(240, 248, 255)
+        Note over Handler,Admin: Sync phase
+        Handler->>Sync: syncRuntime()
+        Sync->>Admin: GET /runtime-config
+        Admin-->>Sync: Fresh runtime config
+        Handler->>Sync: loadStudentCampaign("ABC123")
+        Sync->>Admin: GET /api/students/ABC123/campaign
+        Admin-->>Sync: Generated student campaign
+    end
+
+    rect rgb(245, 255, 245)
+        Note over Handler,Screen: Apply phase
+        Handler->>SM: upsertRuntimeStudent("ABC123", campaign)
+        Handler->>SM: handleEvent({type: nfc_tap, nfcUid: "ABC123"})
+        SM->>SM: Transition to STUDENT_INFO
+        SM->>Screen: Render student campaign
+    end
 ```
+
+---
 
 ## Rendering Model
 
-[`player/src/services/render-service.js`](/home/fergyah/School/S8/PROJ/Project/ids/player/src/services/render-service.js) returns a full HTML page.
+The render service generates a complete HTML page for every state:
 
-It renders:
+```mermaid
+flowchart TD
+    SM[State Machine<br/>getStatus()] --> RS[Render Service]
+    DC[Detector Config] --> RS
 
-- page shell and CSS
-- current state labels
-- campaign item content
-- menu UI
-- debug controls
-- detector client script
+    RS --> HTML[Full HTML Page]
 
-The renderer uses the current state-machine status plus detector config values.
+    HTML --> Shell[Page Shell + CSS]
+    HTML --> State[State Labels]
+    HTML --> Content[Campaign Item Content]
+    HTML --> Menu[Menu UI<br/><i>when in MENU state</i>]
+    HTML --> Debug[Debug Controls<br/><i>when debug=1</i>]
+    HTML --> Detector[Detector Client Script]
+```
 
-## Runtime Config Model
+The renderer outputs a **self-contained HTML page** — no client-side SPA, no build step. The browser just loads the page and it works.
 
-The player accepts two config shapes:
+---
 
-- the current runtime config shape with `idleCampaign`, `menuCampaign`, and `visitorCampaign`
-- a legacy `campaigns` array shape that is normalized for compatibility
+## Runtime Config
 
-Detector config is normalized separately and bounded by defaults from `config-service.js`.
+The player accepts two config shapes at startup:
 
-## Failure Modes To Understand
+| Shape | Structure | When |
+|-------|-----------|------|
+| **Current** | `{ idleCampaign, menuCampaign, visitorCampaign }` | Standard format |
+| **Legacy** | `{ campaigns: [...] }` | Normalized automatically for compatibility |
 
-- invalid startup config exits the process during boot
-- invalid detector config JSON exits the process during boot
-- invalid runtime-config POST payload returns `400 { error: "invalid_runtime_config" }`
-- wrong detector token returns `403 { error: "forbidden_detector_source" }`
-- unsupported detector event type returns `400 { error: "invalid_detector_event_type" }`
-- movement events posted to `/events` return `403`
+Detector config is normalized separately with defaults from `config-service.js`.
+
+---
+
+## Error Handling
+
+| Scenario | Behavior |
+|----------|----------|
+| Invalid startup config | Process exits during boot |
+| Invalid detector config JSON | Process exits during boot |
+| Invalid runtime-config POST | `400 { error: "invalid_runtime_config" }` |
+| Wrong/missing detector token | `403 { error: "forbidden_detector_source" }` |
+| Unsupported detector event type | `400 { error: "invalid_detector_event_type" }` |
+| Movement via `/events` | `403 { error: "movement_event_requires_detector" }` |
+
+---
 
 ## Related Docs
 
-- Player API details: [`../api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md)
-- Shared config and helpers: [`shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md)
-- System view: [`overview.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/overview.md)
+| Document | Description |
+|----------|-------------|
+| [Player API Reference](../api/player.md) | Every endpoint in detail |
+| [Shared Architecture](shared.md) | Config, validation, helpers used by player |
+| [Architecture Overview](overview.md) | The full system view |
