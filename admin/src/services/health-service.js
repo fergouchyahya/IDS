@@ -17,16 +17,16 @@ function createHealthService({ storage }) {
    * Returns health payload.
    *
    * @param {number} startedAt - Service startup timestamp in ms.
-   * @returns {object} Health response payload.
+   * @returns {Promise<object>} Health response payload.
    */
-  function getHealthPayload(startedAt) {
-    const state = storage.readState();
+  async function getHealthPayload(startedAt) {
+    const state = await storage.readState();
     return {
       status: "healthy",
       timestamp: new Date().toISOString(),
       uptimeMs: Date.now() - startedAt,
       storage: {
-        ...storage.getStorageHealth(),
+        ...(await storage.getStorageHealth()),
         idleCampaigns: state.idleCampaigns.length,
         visitorCampaigns: state.visitorCampaigns.length,
         students: state.students.length,

@@ -237,7 +237,12 @@ class PlayerStateMachine {
       this.transitionTo(STATE.VISITOR_INFO, this.runtime.visitorCampaign);
       handled = true;
       action = "show_visitor_info";
-    } else if (normalized === "nfc_tap" && this.currentState === STATE.MENU) {
+    } else if (
+      normalized === "nfc_tap"
+      && (this.currentState === STATE.MENU
+        || this.currentState === STATE.VISITOR_INFO
+        || this.currentState === STATE.STUDENT_INFO)
+    ) {
       const student = this.findStudentByUid(event.nfcUid || event.studentId || event.uid);
       if (student && student.campaign) {
         this.currentStudentUid = student.nfcUid;

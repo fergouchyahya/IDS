@@ -1,67 +1,72 @@
 # IDS
 
-Interactive Digital Signage project with three active packages:
+IDS is an interactive digital signage system with two running services:
 
-- `admin/` - control plane, storage, and browser admin UI
-- `player/` - signage runtime and detector-aware event flow
-- `shared/` - cross-package config, validation, errors, and contract assets
+- `admin/` manages campaigns, student data, uploads, and the browser-based control UI
+- `player/` displays signage content, reacts to movement and NFC-style events, and can sync its runtime from `admin`
+- `shared/` contains the common config, validation, logging, and contract code used by both services
 
-## Current Status
+The repository root for the actual project is `ids/`. Everything in this README describes that workspace and the current working tree.
 
-This repository is in a usable refactor state, not a greenfield state:
+## What The System Does
 
-- Backend modularization for `admin` and `player` is in place.
-- Shared config/error/validation modules exist and are used.
-- The main remaining technical debt is `admin/public/admin-ui.js`, which is still a large transitional orchestration file.
-- The current local verification baseline passes with `make verify-all`.
+At a high level:
 
-If you are resuming work, start from the current code and tests, not from older refactor planning documents.
+1. An operator uses the admin UI to define what should be shown.
+2. The admin service stores that state on disk and exposes it through HTTP APIs.
+3. The player service loads a startup config, optionally pulls live runtime config from admin, and renders a full-screen display.
+4. Movement or NFC-like events change what the player shows.
 
-## Repository Layout
+If you have never seen the code before, read the docs in this order:
+
+1. [`docs/architecture/overview.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/overview.md)
+2. [`docs/glossary.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/glossary.md)
+3. [`docs/architecture/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/admin.md)
+4. [`docs/architecture/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/player.md)
+5. [`docs/api/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/admin.md)
+6. [`docs/api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md)
+
+## Repository Map
 
 ```text
-.
-├── admin/                  Admin server, storage, tests, browser UI
-├── deploy/                 Raspberry Pi env + systemd files
-├── docs/                   Current project docs index and conventions
-├── player/                 Player runtime, detector flow, tests
-├── scripts/                Repo-level verification helpers
-├── shared/                 Shared runtime helpers and JSON contract
-├── API_CONTRACT_BASELINE.md
-├── Makefile
-├── PLAN_OF_WORK.md
-├── REMAINING_WORK_BY_DIFFICULTY.md
-└── ROADMAP.md
+ids/
+├── admin/                  Admin HTTP service, browser UI, tests, file storage
+├── deploy/                 Raspberry Pi env, systemd units, smoke checks
+├── docs/                   Canonical project documentation
+├── player/                 Player HTTP service, state machine, detector flow
+├── scripts/                Repo verification helpers
+├── shared/                 Cross-service config, validation, errors, schema
+├── .env.example            Example runtime environment file
+└── Makefile                Common install, run, validate, and test commands
 ```
 
-## Getting Started
+## Quick Start
 
-Install package dependencies:
+Install dependencies:
 
 ```bash
 make install
 ```
 
-Run the full verification suite:
-
-```bash
-make verify-all
-```
-
-Run the services locally in separate terminals:
+Run the admin service:
 
 ```bash
 make run-admin
+```
+
+Run the player against the bundled example config:
+
+```bash
 make run-player
 ```
 
-Validate the shared config example contract:
+Validate the shared JSON contract example:
 
 ```bash
 make validate
 ```
 
-## Package Test Commands
+Run the verification suites:
 
 ```bash
 npm --prefix admin test
@@ -69,29 +74,31 @@ npm --prefix player test
 node --test shared/test/*.test.js
 ```
 
-## Service Defaults
+## Default Local Runtime
 
-- Admin: `http://127.0.0.1:8081`
-- Player: `http://127.0.0.1:7070`
-- Default player config: `shared/contract/examples/config.welcome.json`
+- Admin URL: `http://127.0.0.1:8081`
+- Player URL: `http://127.0.0.1:7070`
+- Default player startup config: `shared/contract/examples/config.welcome.json`
+- Example environment file: [`.env.example`](/home/fergyah/School/S8/PROJ/Project/ids/.env.example)
 
-Environment variables are documented in [`.env.example`](/home/fergyah/School/S8/PROJ/Project/ids/.env.example). Raspberry Pi deployment values live in [`deploy/pi/env/ids.env`](/home/fergyah/School/S8/PROJ/Project/ids/deploy/pi/env/ids.env).
+## Documentation Index
 
-## Documentation Map
+- [`docs/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/README.md) - full doc index
+- [`docs/status.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/status.md) - what is still unfinished and what should happen next
+- [`docs/architecture/overview.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/overview.md) - system-level architecture and data flow
+- [`docs/architecture/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/admin.md) - admin internals and browser UI wiring
+- [`docs/architecture/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/player.md) - player internals, state machine, detector flow
+- [`docs/architecture/shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md) - shared config, validation, logging, contract assets
+- [`docs/api/admin.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/admin.md) - admin route reference
+- [`docs/api/player.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/api/player.md) - player route reference
+- [`docs/operations/deployment-pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/operations/deployment-pi.md) - Raspberry Pi deployment and operations
+- [`docs/testing.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/testing.md) - verification commands, suite coverage, current known gap
+- [`docs/glossary.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/glossary.md) - beginner-friendly terms
 
-- [`ROADMAP.md`](/home/fergyah/School/S8/PROJ/Project/ids/ROADMAP.md) - current cleanup and next-work sequence
-- [`PLAN_OF_WORK.md`](/home/fergyah/School/S8/PROJ/Project/ids/PLAN_OF_WORK.md) - phased task breakdown with status tracking
-- [`REMAINING_WORK_BY_DIFFICULTY.md`](/home/fergyah/School/S8/PROJ/Project/ids/REMAINING_WORK_BY_DIFFICULTY.md) - phases ranked by difficulty
-- [`API_CONTRACT_BASELINE.md`](/home/fergyah/School/S8/PROJ/Project/ids/API_CONTRACT_BASELINE.md) - endpoint guardrail during refactor
-- [`docs/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/README.md) - doc ownership and what belongs where
-- [`docs/deployment/pi.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/deployment/pi.md) - Raspberry Pi deployment, smoke checks, and rollback
-- [`admin/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/admin/README.md) - how the admin package is structured
-- [`player/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/player/README.md) - how the player package is structured
-- [`shared/README.md`](/home/fergyah/School/S8/PROJ/Project/ids/shared/README.md) - shared modules and contract assets
+## Current Engineering Notes
 
-## Working Rules
-
-- Preserve the API contract unless a change is intentional and documented.
-- Keep `router -> handler -> service -> storage/data` boundaries intact.
-- Prefer adding tests around extracted logic before feature expansion.
-- Finish the admin UI decomposition before starting larger new features such as DB automation or NFC hardware integration.
+- The main architectural seams already exist: `router -> handler -> service -> storage/state`.
+- Admin persistence is async and repository-backed through `FileRepository`.
+- The admin browser UI has been partially decomposed into `public/services/*` and `public/components/*`, but `public/admin-ui.js` still acts as a large orchestration layer.
+- The package test suites are green in a normal local environment; see [`docs/testing.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/testing.md) for the sandbox note on admin integration tests.
+- The canonical “what still needs to be done” page is [`docs/status.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/status.md).
