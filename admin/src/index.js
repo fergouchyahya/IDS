@@ -9,11 +9,12 @@ const { getConfig } = require("../../shared/config");
 
 const logger = createLogger("ids-admin-entry");
 const config = getConfig();
-const port = Number(config.getAdmin().port);
+const adminConfig = config.getAdmin();
+const port = Number(adminConfig.port);
 
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
   logger.error("invalid_port", { env: "ADMIN_PORT", value: process.env.ADMIN_PORT });
   process.exit(2);
 }
 
-createServer({ port });
+createServer({ port, host: adminConfig.host });
