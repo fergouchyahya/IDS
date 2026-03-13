@@ -23,8 +23,10 @@ Assumed layout:
 
 The Pi env file currently defines:
 
+- `ADMIN_HOST`
 - `IDS_PUBLIC_ADMIN_URL`
 - `IDS_ADMIN_DATA_DIR`
+- `PLAYER_HOST`
 - `ADMIN_PORT`
 - `PLAYER_PORT`
 - `IDS_ADMIN_URL`
@@ -54,10 +56,17 @@ sudo chmod 640 /etc/ids/ids.env
 
 Review before starting:
 
+- `ADMIN_HOST`
 - `IDS_PUBLIC_ADMIN_URL`
 - `IDS_ADMIN_DATA_DIR`
+- `PLAYER_HOST`
 - `IDS_ADMIN_URL`
 - `IDS_CONFIG`
+
+For remote browser access to the Pi-hosted admin and player UIs, set:
+
+- `ADMIN_HOST=0.0.0.0`
+- `PLAYER_HOST=0.0.0.0`
 
 ## Install The systemd Units
 

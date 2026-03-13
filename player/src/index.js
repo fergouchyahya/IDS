@@ -48,6 +48,7 @@ function parseCli(argv) {
   const sharedConfig = getConfig().getPlayer();
   const args = {
     configPath: sharedConfig.configPath || "shared/contract/examples/config.welcome.json",
+    host: sharedConfig.host || "127.0.0.1",
     port: Number(sharedConfig.port || 7070),
     adminUrl: sharedConfig.adminUrl || "",
     detectorConfigJson: sharedConfig.detectorConfigJson || "",
@@ -131,6 +132,7 @@ logger.info("boot_config_loaded", { configPath });
 
 createServer({
   config,
+  host: cli.host,
   port: cli.port,
   adminUrl: cli.adminUrl || undefined,
   detectorConfig,
