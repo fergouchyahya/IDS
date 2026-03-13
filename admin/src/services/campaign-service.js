@@ -18,10 +18,10 @@ function createCampaignService({ storage }) {
    * Creates a campaign.
    *
    * @param {object} payload - Campaign payload.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function create(payload) {
-    return storage.createCampaign(payload);
+  async function create(payload) {
+    return await storage.createCampaign(payload);
   }
 
   /**
@@ -29,20 +29,20 @@ function createCampaignService({ storage }) {
    *
    * @param {string} campaignId - Campaign id.
    * @param {object} patch - Campaign patch.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function update(campaignId, patch) {
-    return storage.updateCampaign(campaignId, patch);
+  async function update(campaignId, patch) {
+    return await storage.updateCampaign(campaignId, patch);
   }
 
   /**
    * Deletes a campaign by id.
    *
    * @param {string} campaignId - Campaign id.
-   * @returns {object} Updated state.
+   * @returns {Promise<object>} Updated state.
    */
-  function remove(campaignId) {
-    return storage.deleteCampaign(campaignId);
+  async function remove(campaignId) {
+    return await storage.deleteCampaign(campaignId);
   }
 
   return {

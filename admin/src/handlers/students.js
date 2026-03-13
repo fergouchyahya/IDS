@@ -30,7 +30,7 @@ function extractStudentUid(pathname) {
 async function handleUpsertStudent(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.students.upsert(body);
+    const state = await deps.services.students.upsert(body);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -48,7 +48,7 @@ async function handleUpsertStudent(req, res, deps) {
 async function handleImportStudents(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.students.importProfiles(body);
+    const state = await deps.services.students.importProfiles(body);
     return json(res, 200, {
       state,
       imported: state.studentProfiles.length,
@@ -65,11 +65,12 @@ async function handleImportStudents(req, res, deps) {
  * @param {import('http').ServerResponse} res - HTTP response.
  * @param {URL} url - Parsed URL.
  * @param {object} deps - Handler dependencies.
+ * @returns {Promise<void>}
  */
-function handleGetStudentCampaign(req, res, url, deps) {
+async function handleGetStudentCampaign(req, res, url, deps) {
   const uid = extractStudentUid(url.pathname);
   try {
-    const generated = deps.services.students.getGeneratedCampaign(uid);
+    const generated = await deps.services.students.getGeneratedCampaign(uid);
     return json(res, 200, generated);
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -83,11 +84,12 @@ function handleGetStudentCampaign(req, res, url, deps) {
  * @param {import('http').ServerResponse} res - HTTP response.
  * @param {URL} url - Parsed URL.
  * @param {object} deps - Handler dependencies.
+ * @returns {Promise<void>}
  */
-function handleDeleteStudent(req, res, url, deps) {
+async function handleDeleteStudent(req, res, url, deps) {
   const uid = extractStudentUid(url.pathname);
   try {
-    const state = deps.services.students.remove(uid);
+    const state = await deps.services.students.remove(uid);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);

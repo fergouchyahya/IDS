@@ -34,3 +34,30 @@ test('state machine student NFC flow', () => {
   assert.equal(sm.getStatus().currentStudentUid, 'uid-1');
   sm.stop();
 });
+
+test('state machine NFC tap from VISITOR_INFO transitions to STUDENT_INFO', () => {
+  const sm = new PlayerStateMachine(runtimeFixture());
+  sm.handleEvent({ type: 'movement_detected' });
+  assert.equal(sm.getStatus().state, STATE.MENU);
+
+  sm.handleEvent({ type: 'visitor_selected' });
+  assert.equal(sm.getStatus().state, STATE.VISITOR_INFO);
+
+  const result = sm.handleEvent({ type: 'nfc_tap', nfcUid: 'uid-1' });
+  assert.equal(result.state, STATE.STUDENT_INFO);
+  assert.equal(result.action, 'show_student_info');
+  assert.equal(result.currentStudentUid, 'uid-1');
+  sm.stop();
+});
+
+test('state machine NFC tap with unknown uid from VISITOR_INFO returns to MENU', () => {
+  const sm = new PlayerStateMachine(runtimeFixture());
+  sm.handleEvent({ type: 'movement_detected' });
+  sm.handleEvent({ type: 'visitor_selected' });
+  assert.equal(sm.getStatus().state, STATE.VISITOR_INFO);
+
+  const result = sm.handleEvent({ type: 'nfc_tap', nfcUid: 'unknown' });
+  assert.equal(result.state, STATE.MENU);
+  assert.equal(result.action, 'student_not_found_back_to_menu');
+  sm.stop();
+});

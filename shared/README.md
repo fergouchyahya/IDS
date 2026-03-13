@@ -1,26 +1,15 @@
 # Shared Package
 
-The shared package contains code and assets used by both `admin` and `player`.
+`shared/` holds the code and assets that both running services rely on: config parsing, validation helpers, error types, JSON schema, HTTP helpers, and logging.
 
-## Responsibilities
+Start here for the real documentation:
 
-- environment configuration parsing
-- shared validation helpers
-- shared error types
-- shared HTTP/logger utilities
-- JSON contract schema and validation script
+- Architecture: [`../docs/architecture/shared.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/architecture/shared.md)
+- Testing: [`../docs/testing.md`](/home/fergyah/School/S8/PROJ/Project/ids/docs/testing.md)
 
-## Important Paths
+Useful paths:
 
 - [`config/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/shared/config/index.js)
-- [`errors/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/shared/errors/index.js)
 - [`validation/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/shared/validation/index.js)
+- [`errors/index.js`](/home/fergyah/School/S8/PROJ/Project/ids/shared/errors/index.js)
 - [`contract/schema/config.schema.json`](/home/fergyah/School/S8/PROJ/Project/ids/shared/contract/schema/config.schema.json)
-- [`contract/scripts/validate-config.js`](/home/fergyah/School/S8/PROJ/Project/ids/shared/contract/scripts/validate-config.js)
-
-## Verification
-
-```bash
-node --test shared/test/*.test.js
-make validate
-```

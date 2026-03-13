@@ -51,7 +51,12 @@ async function handleEvents(req, res, url, deps) {
     await deps.syncService.syncRuntime();
 
     const currentState = deps.stateMachine.getStatus().state;
-    if (normalizedEvent === "nfc_tap" && currentState === STATE.MENU) {
+    if (
+      normalizedEvent === "nfc_tap"
+      && (currentState === STATE.MENU
+        || currentState === STATE.VISITOR_INFO
+        || currentState === STATE.STUDENT_INFO)
+    ) {
       const uid = extractUid(event);
       if (uid) {
         try {

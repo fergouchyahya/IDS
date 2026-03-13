@@ -19,7 +19,7 @@ const { json } = require("../../../shared/utils/http-helpers");
 async function handleSetActive(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.config.setActive(body);
+    const state = await deps.services.config.setActive(body);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -37,7 +37,7 @@ async function handleSetActive(req, res, deps) {
 async function handleSetSettings(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.config.setSettings(body);
+    const state = await deps.services.config.setSettings(body);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);
@@ -55,7 +55,7 @@ async function handleSetSettings(req, res, deps) {
 async function handleSetMenuCampaign(req, res, deps) {
   try {
     const body = await deps.readJsonBody(req);
-    const state = deps.services.config.setMenuCampaign(body);
+    const state = await deps.services.config.setMenuCampaign(body);
     return json(res, 200, { state });
   } catch (e) {
     return deps.sendValidationError(res, e);

@@ -13,7 +13,8 @@ const { json } = require("../../shared/utils/http-helpers");
 const { createLogger } = require("../../shared/utils/logger");
 const { renderAdminPage } = require("./render-admin-page");
 const { createAdminRouter } = require("./router");
-const storage = require("./storage");
+const { FileRepository } = require("./storage/repository");
+const { createStorage } = require("./storage");
 const {
   ensureUploadDir,
   processUploadMultipart,
@@ -44,10 +45,11 @@ const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
 /**
  * Processes multipart upload using admin defaults.
  *
+ * @param {object} storage - Storage facade.
  * @param {object} params - Upload options.
  * @returns {object} Uploaded media metadata.
  */
-function processUploadMultipartWithDefaults(params) {
+function processUploadMultipartWithDefaults(storage, params) {
   return processUploadMultipart({
     ...params,
     uploadDir: UPLOAD_DIR,
@@ -59,9 +61,10 @@ function processUploadMultipartWithDefaults(params) {
 /**
  * Builds all admin domain services.
  *
+ * @param {object} storage - Storage facade.
  * @returns {object} Service registry.
  */
-function buildServices() {
+function buildServices(storage) {
   const campaigns = createCampaignService({ storage });
   const config = createConfigService({ storage });
   const students = createStudentService({ storage });
@@ -70,7 +73,7 @@ function buildServices() {
   const media = createMediaService({
     uploadDir: UPLOAD_DIR,
     resolveMimeByExtension,
-    processUploadMultipart: processUploadMultipartWithDefaults,
+    processUploadMultipart: (params) => processUploadMultipartWithDefaults(storage, params),
   });
 
   return {
@@ -94,9 +97,12 @@ function createServer({ port = 8081 } = {}) {
   ensureUploadDir(UPLOAD_DIR);
   const startedAt = Date.now();
 
+  const repository = new FileRepository({ dataDir: DATA_DIR });
+  const storage = createStorage(repository);
+
   const readJsonBody = createJsonBodyReader(storage);
   const readRawBody = createRawBodyReader(storage, MAX_UPLOAD_SIZE);
-  const services = buildServices();
+  const services = buildServices(storage);
 
   /**
    * Sends normalized validation error for handlers.
@@ -106,16 +112,6 @@ function createServer({ port = 8081 } = {}) {
    */
   function handleValidationError(res, err) {
     return sendValidationError(res, err, storage);
-  }
-
-  /**
-   * Processes multipart upload and persists media file.
-   *
-   * @param {object} params - Upload options.
-   * @returns {object} Uploaded media metadata.
-   */
-  function handleUploadMultipart(params) {
-    return processUploadMultipartWithDefaults(params);
   }
 
   const handleRequest = createAdminRouter({
@@ -128,7 +124,6 @@ function createServer({ port = 8081 } = {}) {
     resolveMimeByExtension,
     readRawBody,
     readJsonBody,
-    processUploadMultipart: handleUploadMultipart,
     sendValidationError: handleValidationError,
     storage,
     services,
@@ -175,5 +170,4 @@ module.exports = {
   createServer,
   MAX_UPLOAD_SIZE,
   UPLOAD_DIR,
-  processUploadMultipart: processUploadMultipartWithDefaults,
 };

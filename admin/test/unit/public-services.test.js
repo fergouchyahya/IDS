@@ -390,3 +390,171 @@ test('actions publishCampaignAction publishes idle campaign to active selection'
   assert.equal(refreshCalls, 1);
   assert.deepEqual(status, { message: 'idle campaign published and set active', ok: true });
 });
+
+test('runtime context syncs snapshot and exposes selector helpers', () => {
+  const { AdminRuntimeContext } = loadBrowserScript('services/runtime-context.js', {
+    document: {
+      getElementById() {
+        return null;
+      },
+    },
+  });
+
+  const uiState = {
+    state: { idleCampaigns: [], visitorCampaigns: [], students: [] },
+    selectedCampaignId: 'idle-1',
+    selectedBlockIndex: 2,
+    sidebarQuery: 'welcome',
+    dragSourceIndex: 1,
+    overviewTypeFilter: 'idle',
+    overviewStatusFilter: 'live',
+    builder: { type: 'idle', blocks: [] },
+    menuBlocks: [{ contentId: 'm1' }],
+    builderIssues: [{ path: 'campaignName' }],
+    menuIssues: [{ path: 'items[0].data' }],
+  };
+
+  const store = {
+    getSnapshot() {
+      return { ...uiState };
+    },
+    getBuilder() {
+      return uiState.builder;
+    },
+    setSnapshot(patch) {
+      Object.assign(uiState, patch);
+    },
+  };
+
+  const runtime = AdminRuntimeContext.createRuntimeContext({
+    uiStateStore: store,
+    campaignSelectors: {
+      findStudentCampaignByUid(state, uid) {
+        return { state, uid, source: 'selector' };
+      },
+      getCampaignsByType(state, type) {
+        return [{ state, type }];
+      },
+      toRelativeTime(value) {
+        return `time:${value}`;
+      },
+      normalizeCampaignCards(state) {
+        return [{ id: 'x', state }];
+      },
+      cardTypeLabel(kind) {
+        return `label:${kind}`;
+      },
+    },
+    validation: {
+      validateBuilder(builder) {
+        return builder.blocks.length ? [] : [{ path: 'blocks' }];
+      },
+      validateMenu(blocks, name) {
+        return [{ blocks, name }];
+      },
+      getBlockIssues() {
+        return 'issue';
+      },
+      issuePathToInputId() {
+        return 'input-id';
+      },
+    },
+    setStatus() {},
+    escapeHtml(value) {
+      return String(value);
+    },
+    api() {},
+    defaultBlock() {
+      return { contentId: 'd1' };
+    },
+    makeBlockByType(type, order) {
+      return { type, order };
+    },
+  });
+
+  runtime.setState({ hello: 'world' });
+  runtime.setSelectedCampaignId('idle-2');
+  runtime.setSelectedBlockIndex(0);
+  runtime.setSidebarQuery('next');
+  runtime.setDragSourceIndex(9);
+  runtime.setOverviewTypeFilter('student');
+  runtime.setOverviewStatusFilter('draft');
+  runtime.setMenuBlocks([{ contentId: 'm2' }]);
+  runtime.setBuilderIssues([{ path: 'builder' }]);
+  runtime.setMenuIssues([{ path: 'menu' }]);
+  runtime.syncUiStateStore();
+
+  assert.deepEqual(uiState.state, { hello: 'world' });
+  assert.equal(uiState.selectedCampaignId, 'idle-2');
+  assert.equal(uiState.selectedBlockIndex, 0);
+  assert.equal(uiState.sidebarQuery, 'next');
+  assert.equal(uiState.dragSourceIndex, 9);
+  assert.equal(uiState.overviewTypeFilter, 'student');
+  assert.equal(uiState.overviewStatusFilter, 'draft');
+  assert.deepEqual(uiState.menuBlocks, [{ contentId: 'm2' }]);
+  assert.deepEqual(uiState.builderIssues, [{ path: 'builder' }]);
+  assert.deepEqual(uiState.menuIssues, [{ path: 'menu' }]);
+  assert.deepEqual(runtime.findStudentCampaignByUid('u-1'), { state: { hello: 'world' }, uid: 'u-1', source: 'selector' });
+  assert.deepEqual(runtime.getCampaignsByType('idle'), [{ state: { hello: 'world' }, type: 'idle' }]);
+  assert.equal(runtime.toRelativeTime('iso'), 'time:iso');
+  assert.deepEqual(runtime.normalizeCampaignCards(), [{ id: 'x', state: { hello: 'world' } }]);
+  assert.equal(runtime.cardTypeLabel('menu'), 'label:menu');
+  assert.deepEqual(runtime.validateBuilder(), [{ path: 'blocks' }]);
+  assert.deepEqual(runtime.validateMenu(), [{ blocks: [{ contentId: 'm2' }], name: '' }]);
+  assert.equal(runtime.getBlockIssues(), 'issue');
+  assert.equal(runtime.issuePathToInputId(), 'input-id');
+});
+
+test('legacy bridge binds handlers and creates boot init', async () => {
+  const { AdminLegacyBridge } = loadBrowserScript('services/legacy-bridge.js');
+  const windowObj = {};
+  global.window = windowObj;
+  let bindCalls = 0;
+  let resetType = null;
+  let syncCalls = 0;
+  let refreshCalls = 0;
+  let statusCall = null;
+
+  AdminLegacyBridge.bindGlobalHandlers.call(windowObj, {
+    testHandler() {
+      return 'ok';
+    },
+  });
+
+  const extra = loadBrowserScript('services/legacy-bridge.js');
+  extra.AdminLegacyBridge.bindGlobalHandlers({
+    localHandler() {
+      return 'fine';
+    },
+  });
+
+  const init = extra.AdminLegacyBridge.createLegacyInit({
+    bindEvents() {
+      bindCalls += 1;
+    },
+    resetBuilderForType(type) {
+      resetType = type;
+    },
+    syncUiStateStore() {
+      syncCalls += 1;
+    },
+    async refresh() {
+      refreshCalls += 1;
+      throw { message: 'load failed', issues: [{ path: 'x' }] };
+    },
+    setStatus(message, ok, issues) {
+      statusCall = { message, ok, issues };
+    },
+  });
+
+  init();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(typeof extra.testHandler, 'undefined');
+  assert.equal(typeof extra.localHandler, 'function');
+  assert.equal(bindCalls, 1);
+  assert.equal(resetType, 'idle');
+  assert.equal(syncCalls, 1);
+  assert.equal(refreshCalls, 1);
+  assert.deepEqual(statusCall, { message: 'load failed', ok: false, issues: [{ path: 'x' }] });
+});

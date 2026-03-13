@@ -1,16 +1,13 @@
 /**
- * IDS Admin JSON state storage facade.
+ * IDS Admin storage facade factory.
  *
  * Responsibilities:
- * - Expose stable storage API used by handlers/services.
+ * - Expose stable async storage API used by handlers/services.
  * - Coordinate repository, validators and runtime mapper modules.
  */
 
 const {
   ValidationError,
-  readState,
-  writeState,
-  getStorageHealth,
   nowIso,
   makeId,
   issue,
@@ -31,308 +28,341 @@ const {
 } = require("./storage/runtime-mapper");
 
 /**
- * Creates a new idle/visitor campaign.
+ * Creates an async storage facade backed by the given repository.
  *
- * @param {object} payload - Campaign payload.
- * @returns {object} Updated state.
+ * @param {import('./storage/admin-repository').AdminRepository} repository - Repository instance.
+ * @returns {object} Async storage API.
  */
-function createCampaign({ kind, campaignName, items }) {
-  const state = readState();
-
-  if (!validateCampaignKind(kind)) {
-    throw new ValidationError([issue("kind", "kind must be idle or visitor", "invalid_enum")]);
+function createStorage(repository) {
+  /**
+   * Reads current persisted state.
+   *
+   * @returns {Promise<object>} Current state.
+   */
+  async function readState() {
+    return await repository.readState();
   }
 
-  const campaign = {
-    campaignId: makeId(kind),
-    campaignName: validateCampaignName(campaignName),
-    kind,
-    updatedAt: nowIso(),
-    items: normalizeAndValidateItems(items, "items"),
-  };
+  /**
+   * Creates a new idle/visitor campaign.
+   *
+   * @param {object} payload - Campaign payload.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function createCampaign({ kind, campaignName, items }) {
+    const state = await repository.readState();
 
-  const list = getCampaignListByKind(state, kind);
-  list.push(campaign);
-
-  return writeState(state);
-}
-
-/**
- * Updates existing campaign by id.
- *
- * @param {string} campaignId - Campaign id.
- * @param {object} patch - Campaign patch.
- * @returns {object} Updated state.
- */
-function updateCampaign(campaignId, patch) {
-  const state = readState();
-  const campaignIdTrimmed = String(campaignId || "").trim();
-
-  if (!campaignIdTrimmed) {
-    throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
-  }
-
-  for (const list of [state.idleCampaigns, state.visitorCampaigns]) {
-    const idx = list.findIndex((c) => c.campaignId === campaignIdTrimmed);
-    if (idx >= 0) {
-      const current = list[idx];
-      const next = {
-        ...current,
-        campaignName:
-          patch && Object.prototype.hasOwnProperty.call(patch, "campaignName")
-            ? validateCampaignName(patch.campaignName)
-            : current.campaignName,
-        items:
-          patch && Object.prototype.hasOwnProperty.call(patch, "items")
-            ? normalizeAndValidateItems(patch.items, "items")
-            : current.items,
-        updatedAt: nowIso(),
-      };
-      list[idx] = next;
-      return writeState(state);
+    if (!validateCampaignKind(kind)) {
+      throw new ValidationError([issue("kind", "kind must be idle or visitor", "invalid_enum")]);
     }
+
+    const campaign = {
+      campaignId: makeId(kind),
+      campaignName: validateCampaignName(campaignName),
+      kind,
+      updatedAt: nowIso(),
+      items: normalizeAndValidateItems(items, "items"),
+    };
+
+    const list = getCampaignListByKind(state, kind);
+    list.push(campaign);
+
+    return await repository.writeState(state);
   }
 
-  throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
-}
+  /**
+   * Updates existing campaign by id.
+   *
+   * @param {string} campaignId - Campaign id.
+   * @param {object} patch - Campaign patch.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function updateCampaign(campaignId, patch) {
+    const state = await repository.readState();
+    const campaignIdTrimmed = String(campaignId || "").trim();
 
-/**
- * Deletes campaign by id.
- *
- * @param {string} campaignId - Campaign id.
- * @returns {object} Updated state.
- */
-function deleteCampaign(campaignId) {
-  const state = readState();
-  const id = String(campaignId || "").trim();
-  if (!id) {
-    throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
-  }
+    if (!campaignIdTrimmed) {
+      throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
+    }
 
-  const removeFrom = (list) => {
-    const before = list.length;
-    const afterList = list.filter((c) => c.campaignId !== id);
-    return { changed: afterList.length !== before, list: afterList };
-  };
+    for (const list of [state.idleCampaigns, state.visitorCampaigns]) {
+      const idx = list.findIndex((c) => c.campaignId === campaignIdTrimmed);
+      if (idx >= 0) {
+        const current = list[idx];
+        const next = {
+          ...current,
+          campaignName:
+            patch && Object.prototype.hasOwnProperty.call(patch, "campaignName")
+              ? validateCampaignName(patch.campaignName)
+              : current.campaignName,
+          items:
+            patch && Object.prototype.hasOwnProperty.call(patch, "items")
+              ? normalizeAndValidateItems(patch.items, "items")
+              : current.items,
+          updatedAt: nowIso(),
+        };
+        list[idx] = next;
+        return await repository.writeState(state);
+      }
+    }
 
-  const idle = removeFrom(state.idleCampaigns);
-  const visitor = removeFrom(state.visitorCampaigns);
-  state.idleCampaigns = idle.list;
-  state.visitorCampaigns = visitor.list;
-
-  if (!idle.changed && !visitor.changed) {
     throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
   }
 
-  if (state.active.idleCampaignId === id) {
-    state.active.idleCampaignId = state.idleCampaigns[0]?.campaignId || null;
-  }
-
-  if (state.active.visitorCampaignId === id) {
-    state.active.visitorCampaignId = state.visitorCampaigns[0]?.campaignId || null;
-  }
-
-  return writeState(state);
-}
-
-/**
- * Sets active campaign ids.
- *
- * @param {object} payload - Active mapping payload.
- * @returns {object} Updated state.
- */
-function setActiveCampaigns({ idleCampaignId, visitorCampaignId }) {
-  const state = readState();
-  const issues = [];
-
-  if (idleCampaignId) {
-    const exists = state.idleCampaigns.some((c) => c.campaignId === idleCampaignId);
-    if (!exists) {
-      issues.push(issue("idleCampaignId", "Idle campaign not found", "not_found"));
+  /**
+   * Deletes campaign by id.
+   *
+   * @param {string} campaignId - Campaign id.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function deleteCampaign(campaignId) {
+    const state = await repository.readState();
+    const id = String(campaignId || "").trim();
+    if (!id) {
+      throw new ValidationError([issue("campaignId", "campaignId is required", "required")]);
     }
-  }
 
-  if (visitorCampaignId) {
-    const exists = state.visitorCampaigns.some((c) => c.campaignId === visitorCampaignId);
-    if (!exists) {
-      issues.push(issue("visitorCampaignId", "Visitor campaign not found", "not_found"));
+    const removeFrom = (list) => {
+      const before = list.length;
+      const afterList = list.filter((c) => c.campaignId !== id);
+      return { changed: afterList.length !== before, list: afterList };
+    };
+
+    const idle = removeFrom(state.idleCampaigns);
+    const visitor = removeFrom(state.visitorCampaigns);
+    state.idleCampaigns = idle.list;
+    state.visitorCampaigns = visitor.list;
+
+    if (!idle.changed && !visitor.changed) {
+      throw new ValidationError([issue("campaignId", "Campaign not found", "not_found")]);
     }
+
+    if (state.active.idleCampaignId === id) {
+      state.active.idleCampaignId = state.idleCampaigns[0]?.campaignId || null;
+    }
+
+    if (state.active.visitorCampaignId === id) {
+      state.active.visitorCampaignId = state.visitorCampaigns[0]?.campaignId || null;
+    }
+
+    return await repository.writeState(state);
   }
 
-  throwIfIssues(issues);
+  /**
+   * Sets active campaign ids.
+   *
+   * @param {object} payload - Active mapping payload.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function setActiveCampaigns({ idleCampaignId, visitorCampaignId }) {
+    const state = await repository.readState();
+    const issues = [];
 
-  if (idleCampaignId) state.active.idleCampaignId = idleCampaignId;
-  if (visitorCampaignId) state.active.visitorCampaignId = visitorCampaignId;
-
-  return writeState(state);
-}
-
-/**
- * Sets global admin settings.
- *
- * @param {object} patch - Settings patch.
- * @returns {object} Updated state.
- */
-function setSettings(patch) {
-  const timeout = Number(patch?.inactivityTimeoutMs);
-  if (!Number.isInteger(timeout) || timeout < 100) {
-    throw new ValidationError([
-      issue("inactivityTimeoutMs", "inactivityTimeoutMs must be an integer >= 100", "invalid_number"),
-    ]);
-  }
-
-  const state = readState();
-  state.settings.inactivityTimeoutMs = timeout;
-  return writeState(state);
-}
-
-/**
- * Imports student profile list and replaces stored profiles.
- *
- * @param {object} payload - Student profile import payload.
- * @returns {object} Updated state.
- */
-function importStudentProfiles(payload) {
-  const state = readState();
-  const inputStudents = Array.isArray(payload?.students) ? payload.students : null;
-  if (!inputStudents) {
-    throw new ValidationError([issue("students", "students must be an array", "invalid_type")]);
-  }
-
-  const normalized = [];
-  const seen = new Set();
-  const issues = [];
-
-  inputStudents.forEach((entry, idx) => {
-    const prefix = `students[${idx}]`;
-    try {
-      const profile = normalizeStudentProfilePayload(entry, prefix);
-      if (seen.has(profile.nfcUid)) {
-        issues.push(issue(`${prefix}.nfcUid`, "nfcUid must be unique", "duplicate"));
-      } else {
-        seen.add(profile.nfcUid);
-        normalized.push(profile);
-      }
-    } catch (err) {
-      if (err instanceof ValidationError) {
-        issues.push(...err.issues);
-      } else {
-        issues.push(issue(prefix, err?.message || "invalid_profile", "invalid_profile"));
+    if (idleCampaignId) {
+      const exists = state.idleCampaigns.some((c) => c.campaignId === idleCampaignId);
+      if (!exists) {
+        issues.push(issue("idleCampaignId", "Idle campaign not found", "not_found"));
       }
     }
-  });
 
-  throwIfIssues(issues);
-  state.studentProfiles = normalized;
-  return writeState(state);
-}
+    if (visitorCampaignId) {
+      const exists = state.visitorCampaigns.some((c) => c.campaignId === visitorCampaignId);
+      if (!exists) {
+        issues.push(issue("visitorCampaignId", "Visitor campaign not found", "not_found"));
+      }
+    }
 
-/**
- * Returns generated student campaign payload by UID.
- *
- * @param {string} nfcUid - Student UID.
- * @returns {object} Generated student campaign payload.
- */
-function getGeneratedStudentCampaignByUid(nfcUid) {
-  return mapGeneratedStudentCampaignByUid(readState(), nfcUid);
-}
+    throwIfIssues(issues);
 
-/**
- * Lists all generated student campaigns.
- *
- * @returns {Array<object>} Generated student campaigns.
- */
-function listGeneratedStudentCampaigns() {
-  return mapGeneratedStudentCampaigns(readState());
-}
+    if (idleCampaignId) state.active.idleCampaignId = idleCampaignId;
+    if (visitorCampaignId) state.active.visitorCampaignId = visitorCampaignId;
 
-/**
- * Creates or updates a manual student campaign mapping.
- *
- * @param {object} payload - Student payload.
- * @returns {object} Updated state.
- */
-function upsertStudent(payload) {
-  const state = readState();
-  const normalized = normalizeStudentPayload(payload || {});
-
-  const idx = state.students.findIndex((s) => s.nfcUid === normalized.nfcUid);
-  const campaign = {
-    campaignId: `student-${normalized.nfcUid}`,
-    campaignName: `${normalized.name} Info`,
-    kind: "student",
-    updatedAt: nowIso(),
-    items: normalized.items,
-  };
-
-  const student = {
-    nfcUid: normalized.nfcUid,
-    name: normalized.name,
-    campaign,
-  };
-
-  if (idx >= 0) state.students[idx] = student;
-  else state.students.push(student);
-
-  return writeState(state);
-}
-
-/**
- * Deletes manual student mapping by UID.
- *
- * @param {string} nfcUid - Student UID.
- * @returns {object} Updated state.
- */
-function deleteStudent(nfcUid) {
-  const state = readState();
-  const uid = String(nfcUid || "").trim();
-  if (!uid) {
-    throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
+    return await repository.writeState(state);
   }
 
-  const before = state.students.length;
-  state.students = state.students.filter((s) => s.nfcUid !== uid);
-  if (state.students.length === before) {
-    throw new ValidationError([issue("nfcUid", "Student not found", "not_found")]);
+  /**
+   * Sets global admin settings.
+   *
+   * @param {object} patch - Settings patch.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function setSettings(patch) {
+    const timeout = Number(patch?.inactivityTimeoutMs);
+    if (!Number.isInteger(timeout) || timeout < 100) {
+      throw new ValidationError([
+        issue("inactivityTimeoutMs", "inactivityTimeoutMs must be an integer >= 100", "invalid_number"),
+      ]);
+    }
+
+    const state = await repository.readState();
+    state.settings.inactivityTimeoutMs = timeout;
+    return await repository.writeState(state);
   }
 
-  return writeState(state);
-}
+  /**
+   * Imports student profile list and replaces stored profiles.
+   *
+   * @param {object} payload - Student profile import payload.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function importStudentProfiles(payload) {
+    const state = await repository.readState();
+    const inputStudents = Array.isArray(payload?.students) ? payload.students : null;
+    if (!inputStudents) {
+      throw new ValidationError([issue("students", "students must be an array", "invalid_type")]);
+    }
 
-/**
- * Sets menu campaign.
- *
- * @param {object} payload - Menu campaign payload.
- * @returns {object} Updated state.
- */
-function setMenuCampaign({ campaignName, items }) {
-  const state = readState();
+    const normalized = [];
+    const seen = new Set();
+    const issues = [];
 
-  state.menuCampaign = {
-    campaignId: "menu-default",
-    campaignName: validateCampaignName(campaignName),
-    kind: "menu",
-    updatedAt: nowIso(),
-    items: normalizeAndValidateItems(items, "items"),
+    inputStudents.forEach((entry, idx) => {
+      const prefix = `students[${idx}]`;
+      try {
+        const profile = normalizeStudentProfilePayload(entry, prefix);
+        if (seen.has(profile.nfcUid)) {
+          issues.push(issue(`${prefix}.nfcUid`, "nfcUid must be unique", "duplicate"));
+        } else {
+          seen.add(profile.nfcUid);
+          normalized.push(profile);
+        }
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          issues.push(...err.issues);
+        } else {
+          issues.push(issue(prefix, err?.message || "invalid_profile", "invalid_profile"));
+        }
+      }
+    });
+
+    throwIfIssues(issues);
+    state.studentProfiles = normalized;
+    return await repository.writeState(state);
+  }
+
+  /**
+   * Returns generated student campaign payload by UID.
+   *
+   * @param {string} nfcUid - Student UID.
+   * @returns {Promise<object>} Generated student campaign payload.
+   */
+  async function getGeneratedStudentCampaignByUid(nfcUid) {
+    const state = await repository.readState();
+    return mapGeneratedStudentCampaignByUid(state, nfcUid);
+  }
+
+  /**
+   * Lists all generated student campaigns.
+   *
+   * @returns {Promise<Array<object>>} Generated student campaigns.
+   */
+  async function listGeneratedStudentCampaigns() {
+    const state = await repository.readState();
+    return mapGeneratedStudentCampaigns(state);
+  }
+
+  /**
+   * Creates or updates a manual student campaign mapping.
+   *
+   * @param {object} payload - Student payload.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function upsertStudent(payload) {
+    const state = await repository.readState();
+    const normalized = normalizeStudentPayload(payload || {});
+
+    const idx = state.students.findIndex((s) => s.nfcUid === normalized.nfcUid);
+    const campaign = {
+      campaignId: `student-${normalized.nfcUid}`,
+      campaignName: `${normalized.name} Info`,
+      kind: "student",
+      updatedAt: nowIso(),
+      items: normalized.items,
+    };
+
+    const student = {
+      nfcUid: normalized.nfcUid,
+      name: normalized.name,
+      campaign,
+    };
+
+    if (idx >= 0) state.students[idx] = student;
+    else state.students.push(student);
+
+    return await repository.writeState(state);
+  }
+
+  /**
+   * Deletes manual student mapping by UID.
+   *
+   * @param {string} nfcUid - Student UID.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function deleteStudent(nfcUid) {
+    const state = await repository.readState();
+    const uid = String(nfcUid || "").trim();
+    if (!uid) {
+      throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
+    }
+
+    const before = state.students.length;
+    state.students = state.students.filter((s) => s.nfcUid !== uid);
+    if (state.students.length === before) {
+      throw new ValidationError([issue("nfcUid", "Student not found", "not_found")]);
+    }
+
+    return await repository.writeState(state);
+  }
+
+  /**
+   * Sets menu campaign.
+   *
+   * @param {object} payload - Menu campaign payload.
+   * @returns {Promise<object>} Updated state.
+   */
+  async function setMenuCampaign({ campaignName, items }) {
+    const state = await repository.readState();
+
+    state.menuCampaign = {
+      campaignId: "menu-default",
+      campaignName: validateCampaignName(campaignName),
+      kind: "menu",
+      updatedAt: nowIso(),
+      items: normalizeAndValidateItems(items, "items"),
+    };
+    return await repository.writeState(state);
+  }
+
+  /**
+   * Returns storage health diagnostics.
+   *
+   * @returns {Promise<object>} Health payload.
+   */
+  async function getStorageHealth() {
+    return await repository.getHealth();
+  }
+
+  return {
+    ValidationError,
+    readState,
+    createCampaign,
+    updateCampaign,
+    deleteCampaign,
+    setActiveCampaigns,
+    setSettings,
+    upsertStudent,
+    deleteStudent,
+    setMenuCampaign,
+    importStudentProfiles,
+    getGeneratedStudentCampaignByUid,
+    listGeneratedStudentCampaigns,
+    toRuntimeConfig,
+    normalizeAndValidateItems,
+    getStorageHealth,
   };
-  return writeState(state);
 }
 
 module.exports = {
+  createStorage,
   ValidationError,
-  readState,
-  createCampaign,
-  updateCampaign,
-  deleteCampaign,
-  setActiveCampaigns,
-  setSettings,
-  upsertStudent,
-  deleteStudent,
-  setMenuCampaign,
-  importStudentProfiles,
-  getGeneratedStudentCampaignByUid,
-  listGeneratedStudentCampaigns,
-  toRuntimeConfig,
-  normalizeAndValidateItems,
-  getStorageHealth,
 };
