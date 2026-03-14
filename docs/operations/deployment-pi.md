@@ -1,6 +1,7 @@
 # Raspberry Pi Deployment
 
-> Running IDS on real hardware — from flashing the Pi to daily use.
+> Step-by-step guide to deploy IDS on a Raspberry Pi. Every command is copy-pasteable.
+> Each step tells you **where to run it** (laptop or Pi) and **how to verify it worked**.
 
 ---
 
@@ -49,209 +50,214 @@ flowchart TD
 
 ---
 
-## Operating Model
+## How It Works (The Big Picture)
 
-The deployment goal is:
+- The **Raspberry Pi** runs both services 24/7 and drives the external display.
+- Your **laptop** is only used to manage content (create campaigns, upload media) through the admin UI.
+- You access the admin UI from your laptop through an **SSH tunnel** — this keeps the admin UI private and secure (no login system exists yet).
 
-- the Raspberry Pi runs both services all the time
-- the Pi drives the external display locally
-- the laptop is only used as a remote operator device for creating and publishing content
-
-That means the Pi becomes the permanent host for:
-
-- admin state
-- uploaded media
-- runtime config projection
-- the player screen shown on the attached display
-
-The laptop does not run IDS itself in the normal deployment. Instead, it reaches the Pi-hosted admin UI through SSH port forwarding:
-
-```bash
-ssh -L 8081:127.0.0.1:8081 <pi-user>@<pi-host>
 ```
-
-Then the operator opens:
-
-```text
-http://127.0.0.1:8081
+Laptop browser  -->  SSH tunnel  -->  Pi admin (port 8081)  -->  Pi player (port 7070)  -->  HDMI display
 ```
-
-This matches the behavior:
-
-- same content editing and publishing flow as on the laptop
-- same admin and player logic as the current app
-- better security than exposing the admin UI directly on the network
-
-Why this matters: the current admin service has no built-in operator login, so binding it to localhost on the Pi and accessing it through SSH is the safest mode supported by the current codebase.
 
 ---
 
-## File Layout
+## What You Need Before Starting
 
-| Path | Purpose | Owner |
-|------|---------|-------|
-| `/opt/ids` | Application code (git repo) | `ids:ids` |
-| `/etc/ids/ids.env` | Environment configuration | `root:root` |
-| `/var/lib/ids/admin` | Persistent admin state + uploaded media | `ids:ids` |
-| `/var/log/ids` | Service log output | `ids:ids` |
+- [ ] A Raspberry Pi (3B+ or newer) with power supply
+- [ ] A microSD card (16 GB minimum, 32 GB recommended)
+- [ ] An HDMI display + cable
+- [ ] Ethernet cable (preferred) or Wi-Fi credentials
+- [ ] A laptop with SSH installed (Linux/Mac have it built in; Windows: use PowerShell or WSL)
+- [ ] The IDS repository cloned on your laptop
+
+---
+
+## File Layout on the Pi
+
+| Path | What goes there | Owner |
+|------|-----------------|-------|
+| `/opt/ids` | Application code (copied from laptop) | `ids:ids` |
+| `/etc/ids/ids.env` | Environment variables | `root:root` |
+| `/var/lib/ids/admin` | Saved state + uploaded media (survives updates) | `ids:ids` |
+| `/var/log/ids` | Service logs | `ids:ids` |
 
 ---
 
 ## Step-by-Step Setup
 
-### 1. Flash the Pi
+### Step 1 — Flash the SD Card
 
-Use Raspberry Pi Imager and prepare the card with:
+**Where:** on your laptop.
 
-- Raspberry Pi OS Bookworm
-- a hostname such as `ids-pi`
-- SSH enabled
-- a non-default username
-- Wi-Fi configured only if Ethernet is not available
+1. Download and open [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
+2. Choose **Raspberry Pi OS (64-bit)** — Bookworm
+3. Click the gear icon (or "Edit Settings") and set:
+   - **Hostname:** `ids-pi`
+   - **Enable SSH:** yes (use password authentication for now)
+   - **Username:** `admin` (or whatever you prefer — remember it)
+   - **Password:** pick something you will remember
+   - **Wi-Fi:** only fill in if you are NOT using Ethernet
+4. Flash the SD card
+5. Put the SD card in the Pi
+6. Plug in Ethernet, HDMI display, then power
 
-Recommended choices:
+Wait about 60 seconds for first boot to finish.
 
-- use Ethernet if possible
-- connect the Pi to the external display before first full boot
-- keep the Pi on a trusted private network
+---
 
-### 2. First boot
+### Step 2 — Find the Pi and Connect
 
-Log into the Pi and update it:
+**Where:** on your laptop.
+
+Find the Pi's IP address. Try one of these:
 
 ```bash
-sudo apt update
-sudo apt full-upgrade -y
+# Option A: if you set hostname to ids-pi
+ping ids-pi.local
+
+# Option B: scan your local network (change the subnet if yours is different)
+# On Linux/Mac:
+arp -a | grep -i "raspberry\|dc:a6\|b8:27\|d8:3a\|2c:cf\|e4:5f"
+
+# Option C: check your router's admin page for connected devices
+```
+
+Once you have the IP, SSH in (replace `10.153.57.101` with your Pi's actual IP everywhere below):
+
+```bash
+ssh admin@10.153.57.101
+```
+
+Type `yes` when asked about the fingerprint, then enter your password.
+
+**Verify:** you see a prompt like `admin@ids-pi:~ $`
+
+---
+
+### Step 3 — Update the Pi
+
+**Where:** on the Pi (through SSH).
+
+```bash
+sudo apt update && sudo apt full-upgrade -y
+```
+
+Set the timezone:
+
+```bash
 sudo timedatectl set-timezone Europe/Paris
+```
+
+**Verify:**
+
+```bash
+date
+```
+
+Should show the correct date and time in your timezone.
+
+Optional — open `raspi-config` to check display/camera settings:
+
+```bash
 sudo raspi-config
 ```
 
-Inside `raspi-config`, verify:
+---
 
-- the hostname
-- SSH
-- camera support if your detector setup will use it
-- display and boot behavior appropriate for your screen setup
+### Step 4 — Set Up SSH Key Login (No More Passwords)
 
-### 3. Set up SSH access from the laptop
+**Where:** on your laptop (open a NEW terminal, keep the Pi session open).
 
-On the Pi, make sure SSH is enabled and running:
+Check if you already have an SSH key:
 
 ```bash
-sudo systemctl enable --now ssh
-sudo systemctl status ssh
+ls ~/.ssh/id_ed25519.pub
 ```
 
-On the laptop, check whether you already have an SSH key:
+If you get "No such file", create one:
 
 ```bash
-ls -la ~/.ssh
+ssh-keygen -t ed25519
 ```
 
-If you do not have `~/.ssh/id_ed25519` and `~/.ssh/id_ed25519.pub`, create them:
+Press Enter three times to accept defaults (no passphrase is fine for this).
+
+Copy your key to the Pi:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -C "<your-name>@<laptop>"
+ssh-copy-id admin@10.153.57.101
 ```
 
-Find the Pi username on the Pi:
+Enter your Pi password one last time.
+
+**Verify:** this should log you in with NO password prompt:
 
 ```bash
-whoami
-hostname -I
+ssh admin@10.153.57.101
 ```
 
-Use the Pi IP address from `hostname -I` on the laptop for the first connection:
+If it still asks for a password, something went wrong. Check:
+- `ls ~/.ssh/id_ed25519.pub` exists on the laptop
+- `cat ~/.ssh/authorized_keys` on the Pi shows your key
+
+---
+
+### Step 5 — Install Node.js 20
+
+**Where:** on the Pi.
+
+Install prerequisites:
 
 ```bash
-ssh <pi-user>@<pi-ip>
+sudo apt install -y git curl ca-certificates gnupg
 ```
 
-If the connection works with a password, copy your laptop public key to the Pi:
+Add the NodeSource repository and install Node.js 20:
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519.pub <pi-user>@<pi-ip>
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+sudo apt update
+sudo apt install -y nodejs
 ```
 
-If `ssh-copy-id` is unavailable or fails, copy the key manually. On the laptop:
-
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-Then on the Pi:
-
-```bash
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
-nano ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
-
-Paste the key into `~/.ssh/authorized_keys`, save, and exit.
-
-Verify passwordless login from the laptop:
-
-```bash
-ssh <pi-user>@<pi-ip>
-```
-
-If key login works, test the SSH tunnel that will be used for the admin UI:
-
-```bash
-ssh -L 8081:127.0.0.1:8081 <pi-user>@<pi-ip>
-```
-
-Then open:
-
-```text
-http://127.0.0.1:8081
-```
-
-Optional hardening after key login works:
-
-- disable password SSH login
-- disable root SSH login
-
-### 4. Install runtime prerequisites
-
-```bash
-sudo apt install -y git curl ca-certificates
-```
-
-Install Node.js 20 and npm from NodeSource:
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -sudo apt install -y nodejs
-```
-
-Verify the installed versions:
+**Verify:**
 
 ```bash
 node -v
+```
+
+Must show `v20.x.x` or higher. **Do NOT continue if it shows v18 or lower.**
+
+```bash
 npm -v
 ```
 
-Expected result:
+Must print a version number (any is fine).
 
-- `node -v` should report `v20.x.x` or newer
-- `npm -v` should print an npm version number
-
-If `node -v` is below 20, do not continue until Node.js has been upgraded.
-
-If the Pi will open the player in a local browser window, also install Chromium:
+If the Pi will show the player in a browser window on its own desktop, also install Chromium:
 
 ```bash
 sudo apt install -y chromium-browser
 ```
 
-### 5. Create the IDS runtime user
+---
+
+### Step 6 — Create the IDS User and Directories
+
+**Where:** on the Pi.
+
+Create a dedicated system user (no login shell, just for running the services):
 
 ```bash
-sudo useradd --system --home /opt/ids --shell /usr/sbin/nologin ids || true
+sudo useradd --system --home /opt/ids --shell /usr/sbin/nologin ids
 ```
 
-### 6. Create directories
+If it says "user already exists", that's fine — keep going.
+
+Create all required directories:
 
 ```bash
 sudo mkdir -p /opt/ids /etc/ids /var/lib/ids/admin /var/log/ids
@@ -259,11 +265,66 @@ sudo chown -R ids:ids /opt/ids /var/lib/ids /var/log/ids
 sudo chmod 750 /etc/ids /var/lib/ids /var/log/ids
 ```
 
-### 7. Put the repository at `/opt/ids`
+**Verify:**
 
-Clone or copy the IDS repository to `/opt/ids`.
+```bash
+id ids
+```
 
-### 8. Install the environment file
+Should show the `ids` user. Then:
+
+```bash
+ls -la /opt/ids /etc/ids /var/lib/ids /var/log/ids
+```
+
+All directories should exist and show correct owners.
+
+---
+
+### Step 7 — Copy the Code to the Pi
+
+**Where:** start on your laptop.
+
+First, on your laptop, go to your IDS repo and make sure you're on the right branch:
+
+```bash
+cd ~/School/S8/PROJ/Project/ids
+git status
+```
+
+Now copy the code to the Pi (this sends everything except `.git` and `node_modules`):
+
+```bash
+rsync -av --delete \
+  --exclude '.git' \
+  --exclude 'node_modules' \
+  ~/School/S8/PROJ/Project/ids/ admin@10.153.57.101:/tmp/ids-copy/
+```
+
+**Where:** now switch to the Pi (SSH in if not already connected).
+
+Move the files to their final location:
+
+```bash
+sudo rm -rf /opt/ids/*
+sudo cp -a /tmp/ids-copy/. /opt/ids/
+sudo chown -R ids:ids /opt/ids
+rm -rf /tmp/ids-copy
+```
+
+**Verify:**
+
+```bash
+ls /opt/ids/
+```
+
+You should see: `admin`, `player`, `shared`, `deploy`, `Makefile`, etc.
+
+---
+
+### Step 8 — Install the Environment File
+
+**Where:** on the Pi.
 
 ```bash
 sudo cp /opt/ids/deploy/pi/env/ids.env /etc/ids/ids.env
@@ -271,16 +332,49 @@ sudo chown root:root /etc/ids/ids.env
 sudo chmod 640 /etc/ids/ids.env
 ```
 
-### 9. Install dependencies
+**Verify:**
+
+```bash
+sudo cat /etc/ids/ids.env
+```
+
+You should see variables like `ADMIN_HOST=127.0.0.1`, `ADMIN_PORT=8081`, etc.
+
+---
+
+### Step 9 — Install Node Dependencies
+
+**Where:** on the Pi.
 
 ```bash
 cd /opt/ids
-npm --prefix admin install
-npm --prefix player install
-npm --prefix shared/contract install
+sudo -u ids npm --prefix admin install
+sudo -u ids npm --prefix player install
+sudo -u ids npm --prefix shared/contract install
 ```
 
-### 10. Install systemd units
+> We use `sudo -u ids` so the `node_modules` directories are owned by the `ids` user. If npm complains about permissions, run without `sudo -u ids` and then fix ownership:
+> ```bash
+> npm --prefix admin install
+> npm --prefix player install
+> npm --prefix shared/contract install
+> sudo chown -R ids:ids /opt/ids
+> ```
+
+**Verify:**
+
+```bash
+ls /opt/ids/admin/node_modules/ | head -5
+ls /opt/ids/player/node_modules/ | head -5
+```
+
+Both should show installed packages (not empty).
+
+---
+
+### Step 10 — Install and Enable systemd Services
+
+**Where:** on the Pi.
 
 ```bash
 sudo cp /opt/ids/deploy/pi/systemd/ids-admin.service /etc/systemd/system/
@@ -289,83 +383,250 @@ sudo systemctl daemon-reload
 sudo systemctl enable ids-admin.service ids-player.service
 ```
 
-### 11. Start services
+**Verify:**
+
+```bash
+sudo systemctl is-enabled ids-admin.service
+sudo systemctl is-enabled ids-player.service
+```
+
+Both should say `enabled`.
+
+---
+
+### Step 11 — Start the Services
+
+**Where:** on the Pi.
+
+Start admin first (player depends on it):
 
 ```bash
 sudo systemctl start ids-admin.service
+```
+
+Wait 3 seconds, then start the player:
+
+```bash
 sudo systemctl start ids-player.service
+```
+
+**Verify both are running:**
+
+```bash
+sudo systemctl status ids-admin.service --no-pager
+sudo systemctl status ids-player.service --no-pager
+```
+
+Both should show **`active (running)`** in green.
+
+If either shows `failed`, check the logs:
+
+```bash
+journalctl -u ids-admin.service -n 50 --no-pager
+journalctl -u ids-player.service -n 50 --no-pager
 ```
 
 ---
 
-## Environment Configuration
+### Step 12 — Run the Smoke Check
 
-Edit `/etc/ids/ids.env` before starting regular use:
+**Where:** on the Pi.
 
-| Variable | Value | Why It Matters |
-|----------|-------|----------------|
-| `ADMIN_HOST` | `127.0.0.1` | Keep admin private to the Pi |
-| `PLAYER_HOST` | `127.0.0.1` | Keep player local to the Pi display |
-| `ADMIN_PORT` | `8081` | Admin service port |
-| `PLAYER_PORT` | `7070` | Player service port |
-| `IDS_ADMIN_URL` | `http://127.0.0.1:8081` | How the player reaches admin |
-| `IDS_PUBLIC_ADMIN_URL` | `http://127.0.0.1:8081` | Base URL used for generated media links |
-| `IDS_ADMIN_DATA_DIR` | `/var/lib/ids/admin` | State and uploads location |
-| `IDS_CONFIG` | Path to startup config | Player startup configuration |
-| `IDS_DETECTOR_CONFIG` | JSON string (optional) | Motion detection tuning |
+```bash
+cd /opt/ids
+sudo -u ids bash ./deploy/pi/smoke-check.sh
+```
 
-Important behavior:
+You should see:
 
-- uploaded media URLs are generated from `IDS_PUBLIC_ADMIN_URL`
-- the player fetches those URLs when rendering media blocks
-- when the player runs on the Pi itself, `http://127.0.0.1:8081` is the correct secure value
+```
+[smoke] admin health
+[smoke] admin state
+[smoke] admin runtime-config
+[smoke] admin static asset
+[smoke] player health
+[smoke] player current state
+[smoke] all checks passed
+```
 
-If `IDS_PUBLIC_ADMIN_URL` points at the wrong host, media URLs in campaigns will break.
+If any check fails, the script stops and prints an error. See [Troubleshooting](#troubleshooting) below.
+
+If checks are timing out (slow Pi), increase the timeout:
+
+```bash
+SMOKE_TIMEOUT=15 sudo -u ids bash ./deploy/pi/smoke-check.sh
+```
+
+---
+
+### Step 13 — Access Admin from Your Laptop
+
+**Where:** on your laptop.
+
+Open the SSH tunnel:
+
+```bash
+ssh -L 8081:127.0.0.1:8081 admin@10.153.57.101
+```
+
+Leave this terminal open. Now open your browser and go to:
+
+```
+http://127.0.0.1:8081
+```
+
+You should see the IDS admin interface.
+
+**If the page doesn't load:**
+- Is the SSH tunnel terminal still open? (don't close it)
+- On the Pi, is the admin service running? (`sudo systemctl status ids-admin.service`)
+- Is it bound to the right port? (`ss -ltnp | grep 8081` on the Pi — should show `127.0.0.1:8081`)
+
+---
+
+## You're Done! Setup Complete.
+
+The Pi will now:
+- Auto-start both services on boot
+- Auto-restart them if they crash
+- Show the player display on the connected HDMI screen
+
+---
+
+## I Changed Some Code, Now What?
+
+Once the first-time setup is done (Steps 1–13), you only need to repeat **3 things** to push a code change. Skip everything else.
+
+### On your laptop
+
+**1. Sync your code to the Pi:**
+
+```bash
+cd ~/School/S8/PROJ/Project/ids
+rsync -av --delete --exclude '.git' --exclude 'node_modules' ./ admin@10.153.57.101:/tmp/ids-copy/
+```
+
+### On the Pi (SSH in)
+
+**2. Replace the code and restart:**
+
+```bash
+# Stop
+sudo systemctl stop ids-player.service ids-admin.service
+
+# Replace code
+sudo rm -rf /opt/ids/*
+sudo cp -a /tmp/ids-copy/. /opt/ids/
+sudo chown -R ids:ids /opt/ids
+rm -rf /tmp/ids-copy
+
+# Reinstall dependencies (only needed if you changed package.json)
+cd /opt/ids
+npm --prefix admin install
+npm --prefix player install
+npm --prefix shared/contract install
+sudo chown -R ids:ids /opt/ids
+
+# Start
+sudo systemctl start ids-admin.service
+sudo systemctl start ids-player.service
+```
+
+**3. Verify it works:**
+
+```bash
+sudo systemctl status ids-admin.service --no-pager
+sudo systemctl status ids-player.service --no-pager
+cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
+```
+
+That's it. Your data (campaigns, uploads) in `/var/lib/ids/admin` is untouched — only the code in `/opt/ids` gets replaced.
+
+### What you do NOT need to redo
+
+| Step | Why you can skip it |
+|------|---------------------|
+| Flash SD card | Only done once |
+| Update Pi / install Node | Already installed |
+| Create `ids` user | Already exists |
+| Create directories | Already exist |
+| Install env file | Already at `/etc/ids/ids.env` (unless you changed `deploy/pi/env/ids.env`) |
+| Install systemd units | Already at `/etc/systemd/system/` (unless you changed the `.service` files) |
+| Set up SSH keys | Already done |
+
+### If you also changed the .service or .env files
+
+Add these commands after replacing the code, before starting services:
+
+```bash
+sudo cp /opt/ids/deploy/pi/env/ids.env /etc/ids/ids.env
+sudo cp /opt/ids/deploy/pi/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+---
+
+## Environment Configuration Reference
+
+The environment file is at `/etc/ids/ids.env` on the Pi. Here is what each variable does:
+
+| Variable | Default Value | What It Does |
+|----------|---------------|--------------|
+| `ADMIN_HOST` | `127.0.0.1` | IP the admin service listens on. Keep `127.0.0.1` for security. |
+| `ADMIN_PORT` | `8081` | Port for the admin service. |
+| `PLAYER_HOST` | `127.0.0.1` | IP the player service listens on. |
+| `PLAYER_PORT` | `7070` | Port for the player service. |
+| `IDS_ADMIN_URL` | `http://127.0.0.1:8081` | URL the player uses to reach the admin API. |
+| `IDS_PUBLIC_ADMIN_URL` | `http://127.0.0.1:8081` | Base URL for media file links in campaigns. |
+| `IDS_ADMIN_DATA_DIR` | `/var/lib/ids/admin` | Where state and uploaded files are saved. |
+| `IDS_CONFIG` | Path to JSON file | Player startup configuration file. |
+| `IDS_DETECTOR_CONFIG` | _(empty)_ | Optional JSON for motion detection tuning. |
+
+**Critical rule:** `IDS_PUBLIC_ADMIN_URL` must match the URL the player can actually reach. On the Pi, both services run locally, so `http://127.0.0.1:8081` is correct. If you change this to something wrong, uploaded media will not display.
+
+To edit the env file:
+
+```bash
+sudo nano /etc/ids/ids.env
+```
+
+After editing, restart both services:
+
+```bash
+sudo systemctl restart ids-admin.service ids-player.service
+```
 
 ---
 
 ## Daily Use
 
-### On the Pi
+### Viewing the Player Display (on the Pi)
 
-The Pi runs:
-
-- `ids-admin.service`
-- `ids-player.service`
-- the attached display showing the player UI
-
-For the local display, open:
-
-```text
-http://127.0.0.1:7070
-```
-
-For manual verification on the Pi desktop:
+The Pi display should show the player automatically. If you need to open it manually on the Pi desktop:
 
 ```bash
-chromium-browser --app=http://127.0.0.1:7070
+chromium-browser --kiosk http://127.0.0.1:7070
 ```
 
-### On the laptop
+(`--kiosk` = full-screen, no toolbar)
 
-Open the SSH tunnel:
+### Managing Content (from your laptop)
+
+1. Open a terminal and start the SSH tunnel:
 
 ```bash
-ssh -L 8081:127.0.0.1:8081 <pi-user>@<pi-host>
+ssh -L 8081:127.0.0.1:8081 admin@10.153.57.101
 ```
 
-Then open the admin UI in the laptop browser:
+2. Open your browser to `http://127.0.0.1:8081`
 
-```text
-http://127.0.0.1:8081
-```
+3. From there you can:
+   - Create and edit campaigns
+   - Upload media (images, videos)
+   - Publish changes to the player
+   - Manage students
 
-This lets you:
-
-- create campaigns
-- upload media
-- publish changes
-- manage the Pi-hosted system without exposing admin directly on the LAN
+4. **Keep the SSH terminal open** the entire time you are working. Closing it kills the tunnel.
 
 ---
 
@@ -393,138 +654,268 @@ flowchart LR
     Unit --> Restart["Restart: on-failure"]
 ```
 
-The player depends on admin — systemd ensures admin starts first.
+The player depends on admin — systemd ensures admin starts first. If admin goes down, systemd stops the player too.
 
 ---
 
-## Smoke Check
-
-Verify both services are healthy:
+## Smoke Check Details
 
 ```bash
 cd /opt/ids
-./deploy/pi/smoke-check.sh
+sudo -u ids bash ./deploy/pi/smoke-check.sh
 ```
 
-Override the per-request timeout:
-
-```bash
-SMOKE_TIMEOUT=10 ./deploy/pi/smoke-check.sh
-```
-
-**What it checks:**
-
-| Service | Endpoint | Verifies |
-|---------|----------|----------|
-| Admin | `/health` | Service is running |
-| Admin | `/api/state` | State is readable |
-| Admin | `/runtime-config` | Runtime projection works |
-| Admin | `/services/runtime-deps.js` | UI assets are served |
-| Player | `/health` | Service is running |
-| Player | `/current` | State machine is responding |
+| # | Service | Endpoint | What It Proves |
+|---|---------|----------|----------------|
+| 1 | Admin | `/health` | Admin process is alive |
+| 2 | Admin | `/api/state` | State file is readable |
+| 3 | Admin | `/runtime-config` | Config projection works |
+| 4 | Admin | `/services/runtime-deps.js` | UI static files are served |
+| 5 | Player | `/health` | Player process is alive |
+| 6 | Player | `/current` | State machine is responding |
 
 ---
 
 ## Common Operations
 
-### Update to latest code
+### Deploying New Code (Update)
+
+**Where:** start on your laptop, finish on the Pi.
+
+**On the laptop** — sync latest code to the Pi:
 
 ```bash
+cd ~/School/S8/PROJ/Project/ids
+rsync -av --delete \
+  --exclude '.git' \
+  --exclude 'node_modules' \
+  ./ admin@10.153.57.101:/tmp/ids-copy/
+```
+
+**On the Pi** — apply the update:
+
+```bash
+# Stop services first
+sudo systemctl stop ids-player.service ids-admin.service
+
+# Replace code (keeps your data in /var/lib/ids safe)
+sudo rm -rf /opt/ids/*
+sudo cp -a /tmp/ids-copy/. /opt/ids/
+sudo chown -R ids:ids /opt/ids
+rm -rf /tmp/ids-copy
+
+# Reinstall dependencies
 cd /opt/ids
-git pull origin main
 npm --prefix admin install
 npm --prefix player install
 npm --prefix shared/contract install
-sudo systemctl restart ids-admin.service ids-player.service
-./deploy/pi/smoke-check.sh
-```
+sudo chown -R ids:ids /opt/ids
 
-### Update env or unit files
-
-```bash
+# Copy updated service/env files (in case they changed)
 sudo cp /opt/ids/deploy/pi/env/ids.env /etc/ids/ids.env
 sudo cp /opt/ids/deploy/pi/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
+
+# Start services again
+sudo systemctl start ids-admin.service
+sudo systemctl start ids-player.service
+
+# Verify
+sudo systemctl status ids-admin.service --no-pager
+sudo systemctl status ids-player.service --no-pager
+cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
+```
+
+### Quick Restart (No Code Change)
+
+**Where:** on the Pi.
+
+```bash
 sudo systemctl restart ids-admin.service ids-player.service
 ```
 
-### Verify local-only bind
+### Update Only the Environment File
+
+**Where:** on the Pi.
 
 ```bash
-ss -ltnp | grep ':8081'   # Should show 127.0.0.1:8081
-ss -ltnp | grep ':7070'   # Should show 127.0.0.1:7070
-```
-
-### Rollback
-
-```bash
-cd /opt/ids
-git checkout <previous-known-good-ref>
+sudo nano /etc/ids/ids.env
+# make your changes, save with Ctrl+O, exit with Ctrl+X
 sudo systemctl restart ids-admin.service ids-player.service
-./deploy/pi/smoke-check.sh
 ```
 
-If you suspect bad state, back it up first:
+### Check That Services Are Only Listening Locally
+
+**Where:** on the Pi.
+
+```bash
+ss -ltnp | grep ':8081'
+ss -ltnp | grep ':7070'
+```
+
+Both should show `127.0.0.1` — NOT `0.0.0.0`. If you see `0.0.0.0`, the admin UI is exposed on the network (see [Less Secure Alternative](#less-secure-alternative)).
+
+### Back Up Your Data Before Risky Changes
+
+**Where:** on the Pi.
 
 ```bash
 sudo cp -a /var/lib/ids/admin /var/lib/ids/admin.backup.$(date +%Y%m%d%H%M%S)
 ```
 
----
-
-## Less Secure Alternative
-
-If you want direct browser access from another machine without SSH port forwarding, you can expose admin on the LAN:
+This copies all state and uploaded media. To restore from a backup:
 
 ```bash
-ADMIN_HOST=0.0.0.0
-PLAYER_HOST=0.0.0.0
-IDS_PUBLIC_ADMIN_URL=http://<pi-hostname-or-ip>:8081
+# List backups
+ls /var/lib/ids/
+
+# Restore (replace the timestamp with yours)
+sudo systemctl stop ids-admin.service ids-player.service
+sudo rm -rf /var/lib/ids/admin
+sudo cp -a /var/lib/ids/admin.backup.20260314120000 /var/lib/ids/admin
+sudo chown -R ids:ids /var/lib/ids/admin
+sudo systemctl start ids-admin.service ids-player.service
 ```
 
-That mode is closer to the original remote-browser pattern, but it is less secure because the admin UI is reachable from the network and the current codebase does not provide operator authentication.
+---
+
+## Less Secure Alternative (LAN Access Without SSH Tunnel)
+
+If you want direct browser access from your laptop without the SSH tunnel, you can expose admin on the local network. **Only do this on a trusted, private network.**
+
+Edit `/etc/ids/ids.env` on the Pi:
+
+```bash
+sudo nano /etc/ids/ids.env
+```
+
+Change these three lines:
+
+```
+ADMIN_HOST=0.0.0.0
+PLAYER_HOST=0.0.0.0
+IDS_PUBLIC_ADMIN_URL=http://10.153.57.101:8081
+```
+
+(Replace `10.153.57.101` with your Pi's actual IP.)
+
+Then restart:
+
+```bash
+sudo systemctl restart ids-admin.service ids-player.service
+```
+
+Now you can open `http://10.153.57.101:8081` directly in your laptop browser — no SSH tunnel needed.
+
+**Warning:** anyone on your network can access the admin UI. There is no login/password protection.
 
 ---
 
 ## Troubleshooting
 
-### Check service status
+### 1. Check if services are running
 
 ```bash
-sudo systemctl status ids-admin.service
-sudo systemctl status ids-player.service
+sudo systemctl status ids-admin.service --no-pager
+sudo systemctl status ids-player.service --no-pager
 ```
 
-### Read logs
+Look for `active (running)`. If you see `failed` or `inactive`, read the logs.
+
+### 2. Read the logs
 
 ```bash
+# Last 100 lines of admin logs
 journalctl -u ids-admin.service -n 100 --no-pager
+
+# Last 100 lines of player logs
 journalctl -u ids-player.service -n 100 --no-pager
+
+# Follow logs in real time (Ctrl+C to stop)
+journalctl -u ids-admin.service -f
 ```
 
-### Check restart counts
+### 3. Service keeps crashing (restart limit hit)
+
+If a service crashes 5 times in 60 seconds, systemd stops trying. Reset and try again:
+
+```bash
+sudo systemctl reset-failed ids-admin.service ids-player.service
+sudo systemctl start ids-admin.service
+sudo systemctl start ids-player.service
+```
+
+Then read the logs to find out why it crashed.
+
+### 4. Check restart count
 
 ```bash
 systemctl show ids-admin.service -p NRestarts
 systemctl show ids-player.service -p NRestarts
 ```
 
-### Reset after restart limit hit
+### Common Problems and Fixes
+
+| What's Wrong | Why | How to Fix |
+|---|---|---|
+| Laptop can't open `http://127.0.0.1:8081` | SSH tunnel is not running | Open a terminal and run `ssh -L 8081:127.0.0.1:8081 admin@10.153.57.101` |
+| Images/videos don't show in the player | `IDS_PUBLIC_ADMIN_URL` is wrong | Edit `/etc/ids/ids.env`, set `IDS_PUBLIC_ADMIN_URL=http://127.0.0.1:8081`, restart services |
+| Player won't start | Admin service isn't running yet | Run `sudo systemctl start ids-admin.service` first, wait 3 seconds, then start player |
+| "Permission denied" errors in logs | Wrong file ownership | Run `sudo chown -R ids:ids /opt/ids /var/lib/ids /var/log/ids` |
+| `node: command not found` | Node.js not installed | Go back to [Step 5](#step-5--install-nodejs-20) |
+| `npm install` fails with network errors | Pi has no internet | Check `ping google.com` — fix DNS or network first |
+| smoke-check.sh says "permission denied" | Script not executable or wrong user | Run with `sudo -u ids bash ./deploy/pi/smoke-check.sh` |
+| Services start but ports show `0.0.0.0` | `ADMIN_HOST`/`PLAYER_HOST` set to `0.0.0.0` | Edit `/etc/ids/ids.env`, set both to `127.0.0.1`, restart services |
+
+---
+
+## Quick Reference Card
+
+Copy-paste cheat sheet for day-to-day commands.
 
 ```bash
-sudo systemctl reset-failed ids-admin.service
-sudo systemctl reset-failed ids-player.service
+# --- ON YOUR LAPTOP ---
+
+# SSH into the Pi
+ssh admin@10.153.57.101
+
+# Open admin tunnel (keep this terminal open)
+ssh -L 8081:127.0.0.1:8081 admin@10.153.57.101
+# Then open http://127.0.0.1:8081 in your browser
+
+# Deploy new code to Pi
+cd ~/School/S8/PROJ/Project/ids
+rsync -av --delete --exclude '.git' --exclude 'node_modules' ./ admin@10.153.57.101:/tmp/ids-copy/
+
+# --- ON THE PI ---
+
+# Check service status
+sudo systemctl status ids-admin.service --no-pager
+sudo systemctl status ids-player.service --no-pager
+
+# Restart both services
+sudo systemctl restart ids-admin.service ids-player.service
+
+# Read logs
+journalctl -u ids-admin.service -n 100 --no-pager
+journalctl -u ids-player.service -n 100 --no-pager
+
+# Run smoke check
+cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
+
+# Apply code update after rsync
+sudo systemctl stop ids-player.service ids-admin.service
+sudo rm -rf /opt/ids/* && sudo cp -a /tmp/ids-copy/. /opt/ids/ && sudo chown -R ids:ids /opt/ids && rm -rf /tmp/ids-copy
+cd /opt/ids && npm --prefix admin install && npm --prefix player install && npm --prefix shared/contract install && sudo chown -R ids:ids /opt/ids
+sudo systemctl start ids-admin.service && sudo systemctl start ids-player.service
+
+# Back up data
+sudo cp -a /var/lib/ids/admin /var/lib/ids/admin.backup.$(date +%Y%m%d%H%M%S)
+
+# Edit environment
+sudo nano /etc/ids/ids.env
 sudo systemctl restart ids-admin.service ids-player.service
 ```
-
-### Common issues
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Laptop cannot open admin | SSH tunnel not running | Run `ssh -L 8081:127.0.0.1:8081 ...` |
-| Media URLs broken | Wrong `IDS_PUBLIC_ADMIN_URL` | Set it to the actual URL the player can reach |
-| Player won't start | Admin not ready yet | Check `ids-admin.service` status first |
-| Permission denied on data dir | Wrong ownership | `sudo chown -R ids:ids /var/lib/ids` |
 
 ---
 
