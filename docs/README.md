@@ -62,6 +62,7 @@ flowchart TD
 |----------|-------------------|
 | [Deployment Guide](operations/deployment-pi.md) | Raspberry Pi setup — systemd, env config, smoke checks, upgrades |
 | [Testing Guide](testing.md) | Test suites, verification commands, coverage areas |
+| [Repo Assessment](repo-assessment.md) | Repo health, code quality review, and folder-by-folder size breakdown |
 | [Status & Roadmap](status.md) | Current state, phased next steps, deferred work |
 
 ---

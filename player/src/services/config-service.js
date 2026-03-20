@@ -22,29 +22,37 @@ const STATE = {
  */
 const DEFAULT_DETECTOR_CONFIG = Object.freeze({
   analyzeEveryMs: 120,
-  movementPixelThreshold: 22,
-  foregroundDeltaThreshold: 20,
+  movementPixelThreshold: 20,
+  foregroundDeltaThreshold: 18,
   backgroundAlpha: 0.05,
-  minPresenceRatio: 0.03,
-  minPresenceBoxRatio: 0.10,
+  minPresenceRatio: 0.02,
+  minPresenceBoxRatio: 0.06,
   maxPresenceBoxRatio: 0.85,
   minMotionRatio: 0.018,
   motionStreakRequired: 2,
-  minSideMotionPixels: 18,
-  dominanceFactor: 1.45,
+  minSideMotionPixels: 8,
+  dominanceFactor: 1.35,
   presenceStreakRequired: 3,
+  presenceConfirmGapMs: 400,
+  presenceConfirmStreakRequired: 2,
   handMoveStreakRequired: 3,
-  handDirectionStreakRequired: 3,
+  handDirectionStreakRequired: 2,
+  handRaiseStreakRequired: 4,
   menuDecisionDelayMs: 900,
   handZoneTopRatio: 0.12,
   handZoneBottomRatio: 0.78,
-  handZoneSideRatio: 0.24,
+  handZoneSideRatio: 0.28,
+  raiseZoneTopRatio: 0.0,
+  raiseZoneBottomRatio: 0.30,
+  raiseZoneLeftRatio: 0.20,
+  raiseZoneRightRatio: 0.80,
+  minRaiseForegroundPixels: 10,
   mirrorHandedness: true,
   cooldownByEvent: {
     movement_detected: 1700,
     visitor_selected: 800,
-    scroll_next: 460,
-    scroll_prev: 460,
+    scroll_next: 350,
+    scroll_prev: 350,
   },
 });
 
@@ -160,6 +168,16 @@ function normalizeDetectorConfig(input = {}) {
       1,
       20,
     )),
+    presenceConfirmGapMs: Math.round(clamp(
+      toNumber(source.presenceConfirmGapMs, DEFAULT_DETECTOR_CONFIG.presenceConfirmGapMs),
+      100,
+      5000,
+    )),
+    presenceConfirmStreakRequired: Math.round(clamp(
+      toNumber(source.presenceConfirmStreakRequired, DEFAULT_DETECTOR_CONFIG.presenceConfirmStreakRequired),
+      1,
+      20,
+    )),
     handMoveStreakRequired: Math.round(clamp(
       toNumber(source.handMoveStreakRequired, DEFAULT_DETECTOR_CONFIG.handMoveStreakRequired),
       1,
@@ -167,6 +185,11 @@ function normalizeDetectorConfig(input = {}) {
     )),
     handDirectionStreakRequired: Math.round(clamp(
       toNumber(source.handDirectionStreakRequired, DEFAULT_DETECTOR_CONFIG.handDirectionStreakRequired),
+      1,
+      20,
+    )),
+    handRaiseStreakRequired: Math.round(clamp(
+      toNumber(source.handRaiseStreakRequired, DEFAULT_DETECTOR_CONFIG.handRaiseStreakRequired),
       1,
       20,
     )),
@@ -182,6 +205,31 @@ function normalizeDetectorConfig(input = {}) {
       0.05,
       0.45,
     ),
+    raiseZoneTopRatio: clamp(
+      toNumber(source.raiseZoneTopRatio, DEFAULT_DETECTOR_CONFIG.raiseZoneTopRatio),
+      0,
+      0.5,
+    ),
+    raiseZoneBottomRatio: clamp(
+      toNumber(source.raiseZoneBottomRatio, DEFAULT_DETECTOR_CONFIG.raiseZoneBottomRatio),
+      0.1,
+      0.7,
+    ),
+    raiseZoneLeftRatio: clamp(
+      toNumber(source.raiseZoneLeftRatio, DEFAULT_DETECTOR_CONFIG.raiseZoneLeftRatio),
+      0,
+      0.45,
+    ),
+    raiseZoneRightRatio: clamp(
+      toNumber(source.raiseZoneRightRatio, DEFAULT_DETECTOR_CONFIG.raiseZoneRightRatio),
+      0.55,
+      1,
+    ),
+    minRaiseForegroundPixels: Math.round(clamp(
+      toNumber(source.minRaiseForegroundPixels, DEFAULT_DETECTOR_CONFIG.minRaiseForegroundPixels),
+      1,
+      500,
+    )),
     mirrorHandedness: toBool(source.mirrorHandedness, DEFAULT_DETECTOR_CONFIG.mirrorHandedness),
     cooldownByEvent: {
       movement_detected: Math.round(clamp(
@@ -238,14 +286,14 @@ function normalizeRuntimeConfig(input) {
       },
       students: Array.isArray(input.students)
         ? input.students.map((s) => ({
-            ...s,
-            campaign: s.campaign
-              ? {
-                  ...s.campaign,
-                  items: sortItems(s.campaign.items),
-                }
-              : null,
-          }))
+          ...s,
+          campaign: s.campaign
+            ? {
+              ...s.campaign,
+              items: sortItems(s.campaign.items),
+            }
+            : null,
+        }))
         : [],
       updatedAt: input.updatedAt,
     };
