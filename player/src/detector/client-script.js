@@ -3,6 +3,8 @@
  *
  * Responsibilities:
  * - Generate browser-side motion detection script.
+ * - Use MediaPipe Hands for gesture detection (raise, swipe).
+ * - Fall back to pixel-based detection for presence.
  * - Keep detector algorithm isolated from server route logic.
  */
 
@@ -60,7 +62,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
 
       const debugCanvas = document.createElement('canvas');
       debugCanvas.style.cssText = 'width:100%;border-radius:6px;margin-bottom:6px;'
-        + 'border:1px solid rgba(255,255,255,0.15);image-rendering:pixelated;';
+        + 'border:1px solid rgba(255,255,255,0.15);';
       debugOverlay.appendChild(debugCanvas);
 
       const debugText = document.createElement('pre');
@@ -85,9 +87,9 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
       }
 
       try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 10 } },
-            audio: false
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } },
+          audio: false
         }).catch(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false }));
         camEl.srcObject = stream;
       } catch (e) {
@@ -95,28 +97,98 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         return;
       }
 
+      /* ── MediaPipe Hands initialization ── */
+      let handLandmarker = null;
+      let mpReady = false;
+
+      async function initMediaPipeHands() {
+        try {
+          if (typeof HandLandmarker === 'undefined' || typeof FilesetResolver === 'undefined') {
+            console.warn('[detector] MediaPipe not loaded from CDN — HandLandmarker or FilesetResolver missing');
+            console.warn('[detector] HandLandmarker:', typeof HandLandmarker, '| FilesetResolver:', typeof FilesetResolver);
+            return;
+          }
+          console.log('[detector] Loading MediaPipe vision WASM...');
+          const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
+          );
+          console.log('[detector] WASM loaded, creating HandLandmarker...');
+
+          /* Try GPU first, fall back to CPU */
+          async function createWithDelegate(delegate) {
+            return HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                delegate: delegate
+              },
+              runningMode: 'VIDEO',
+              numHands: 1,
+              minHandDetectionConfidence: 0.3,
+              minHandPresenceConfidence: 0.3,
+              minTrackingConfidence: 0.3
+            });
+          }
+
+          try {
+            handLandmarker = await createWithDelegate('GPU');
+            console.log('[detector] MediaPipe Hands ready (GPU)');
+          } catch (gpuErr) {
+            console.warn('[detector] GPU delegate failed, falling back to CPU:', gpuErr.message);
+            handLandmarker = await createWithDelegate('CPU');
+            console.log('[detector] MediaPipe Hands ready (CPU)');
+          }
+          mpReady = true;
+        } catch (e) {
+          console.error('[detector] MediaPipe init failed:', e);
+        }
+      }
+
+      setDetectorUi(false, 'Loading hand tracking model...');
+
+      /* Wait for the ES module to expose MediaPipe globals on window */
+      if (typeof HandLandmarker === 'undefined' || typeof FilesetResolver === 'undefined') {
+        console.log('[detector] Waiting for MediaPipe module to load...');
+        await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            console.warn('[detector] MediaPipe module load timed out after 15s');
+            resolve();
+          }, 15000);
+          window.addEventListener('mediapipe-loaded', () => {
+            clearTimeout(timeout);
+            console.log('[detector] MediaPipe module loaded');
+            resolve();
+          }, { once: true });
+        });
+      }
+
+      await initMediaPipeHands();
+
+      /* ── Pixel-based presence detection canvas ── */
       const hiddenCanvas = document.createElement('canvas');
       const ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
       let lastFrame = null;
       let backgroundFrame = null;
+
+      /* ── State variables ── */
       let lastAnalysisAt = 0;
       let lastDetectedAt = 0;
       let presenceStreak = 0;
-      let handMoveStreak = 0;
       let handRaiseStreak = 0;
-      let rightHandStreak = 0;
-      let leftHandStreak = 0;
-      let motionStreak = 0;
-      let menuReadyAt = Number.POSITIVE_INFINITY;
-      let handCentroidWasCenter = false;
       let swipeRightStreak = 0;
       let swipeLeftStreak = 0;
+      let motionStreak = 0;
+      let menuReadyAt = Number.POSITIVE_INFINITY;
 
-      /* ── Presence confirmation state ── */
+      /* Presence confirmation */
       let presenceFirstDetectedAt = 0;
-      let presenceConfirmed = false;
       let presenceConfirmStreak = 0;
 
+      /* MediaPipe hand tracking */
+      let prevPalmX = null;
+      let smoothedVelocity = 0;
+      let handDetectedStreak = 0;
+
+      /* Config shortcuts */
       const analyzeEveryMs = detectorConfig.analyzeEveryMs;
       const movementPixelThreshold = detectorConfig.movementPixelThreshold;
       const foregroundDeltaThreshold = detectorConfig.foregroundDeltaThreshold;
@@ -126,25 +198,25 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
       const maxPresenceBoxRatio = detectorConfig.maxPresenceBoxRatio;
       const minMotionRatio = detectorConfig.minMotionRatio;
       const motionStreakRequired = detectorConfig.motionStreakRequired;
-      const minSideMotionPixels = detectorConfig.minSideMotionPixels;
-      const dominanceFactor = detectorConfig.dominanceFactor;
       const presenceStreakRequired = detectorConfig.presenceStreakRequired;
       const presenceConfirmGapMs = detectorConfig.presenceConfirmGapMs;
       const presenceConfirmStreakRequired = detectorConfig.presenceConfirmStreakRequired;
-      const handMoveStreakRequired = detectorConfig.handMoveStreakRequired;
-      const handDirectionStreakRequired = detectorConfig.handDirectionStreakRequired;
       const handRaiseStreakRequired = detectorConfig.handRaiseStreakRequired;
+      const handDirectionStreakRequired = detectorConfig.handDirectionStreakRequired;
       const menuDecisionDelayMs = detectorConfig.menuDecisionDelayMs;
-      const handZoneTopRatio = detectorConfig.handZoneTopRatio;
-      const handZoneBottomRatio = detectorConfig.handZoneBottomRatio;
-      const handZoneSideRatio = detectorConfig.handZoneSideRatio;
-      const raiseZoneTopRatio = detectorConfig.raiseZoneTopRatio;
       const raiseZoneBottomRatio = detectorConfig.raiseZoneBottomRatio;
-      const raiseZoneLeftRatio = detectorConfig.raiseZoneLeftRatio;
-      const raiseZoneRightRatio = detectorConfig.raiseZoneRightRatio;
-      const minRaiseForegroundPixels = detectorConfig.minRaiseForegroundPixels;
       const cooldownByEvent = detectorConfig.cooldownByEvent;
       const mirrorHandedness = detectorConfig.mirrorHandedness;
+
+      /* Hand connections for debug skeleton drawing */
+      const HAND_CONNECTIONS = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [0,9],[9,10],[10,11],[11,12],
+        [0,13],[13,14],[14,15],[15,16],
+        [0,17],[17,18],[18,19],[19,20],
+        [5,9],[9,13],[13,17]
+      ];
 
       function analyze(now) {
         if (!camEl.videoWidth || !camEl.videoHeight) {
@@ -158,103 +230,64 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         }
         lastAnalysisAt = now;
 
+        /* ── Pixel-based presence detection (always runs) ── */
         hiddenCanvas.width = 96;
         hiddenCanvas.height = 54;
         ctx.drawImage(camEl, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
         const frame = ctx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
 
-        if (!lastFrame || !backgroundFrame) {
+        let presenceRatio = 0;
+        let presenceBoxRatio = 0;
+        let motionRatio = 0;
+        let foregroundPixels = 0;
+
+        if (lastFrame && backgroundFrame) {
+          let changed = 0;
+          let samples = 0;
+          let minX = hiddenCanvas.width, minY = hiddenCanvas.height, maxX = -1, maxY = -1;
+
+          for (let i = 0; i < frame.length; i += 16) {
+            const pixelIndex = i / 4;
+            const x = pixelIndex % hiddenCanvas.width;
+            const y = Math.floor(pixelIndex / hiddenCanvas.width);
+
+            const dr = Math.abs(frame[i] - lastFrame[i]);
+            const dg = Math.abs(frame[i + 1] - lastFrame[i + 1]);
+            const db = Math.abs(frame[i + 2] - lastFrame[i + 2]);
+            if ((dr + dg + db) / 3 > movementPixelThreshold) changed += 1;
+
+            const bdr = Math.abs(frame[i] - backgroundFrame[i]);
+            const bdg = Math.abs(frame[i + 1] - backgroundFrame[i + 1]);
+            const bdb = Math.abs(frame[i + 2] - backgroundFrame[i + 2]);
+            const isForeground = (bdr + bdg + bdb) / 3 > foregroundDeltaThreshold;
+            if (isForeground) {
+              foregroundPixels += 1;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            } else {
+              backgroundFrame[i] = Math.round(backgroundFrame[i] * (1 - backgroundAlpha) + frame[i] * backgroundAlpha);
+              backgroundFrame[i + 1] = Math.round(backgroundFrame[i + 1] * (1 - backgroundAlpha) + frame[i + 1] * backgroundAlpha);
+              backgroundFrame[i + 2] = Math.round(backgroundFrame[i + 2] * (1 - backgroundAlpha) + frame[i + 2] * backgroundAlpha);
+            }
+            samples += 1;
+          }
+
+          presenceRatio = samples > 0 ? foregroundPixels / samples : 0;
+          motionRatio = samples > 0 ? changed / samples : 0;
+          if (foregroundPixels > 0 && maxX >= minX && maxY >= minY) {
+            presenceBoxRatio = ((maxX - minX + 1) * (maxY - minY + 1)) / (hiddenCanvas.width * hiddenCanvas.height);
+          }
+        } else {
           lastFrame = frame;
           backgroundFrame = frame.slice();
-          setDetectorUi(false, 'Watching for movement...');
+          setDetectorUi(false, mpReady ? 'Hand tracking ready' : 'Watching for movement...');
           requestAnimationFrame(analyze);
           return;
         }
 
-        let changed = 0;
-        let samples = 0;
-        let leftHandZoneChanged = 0;
-        let rightHandZoneChanged = 0;
-        let handZoneChanged = 0;
-        let raiseZoneForeground = 0;
-        let raiseZoneMotion = 0;
-        let foregroundPixels = 0;
-        let handBandMotionSumX = 0;
-        let handBandMotionCount = 0;
-        let minX = hiddenCanvas.width;
-        let minY = hiddenCanvas.height;
-        let maxX = -1;
-        let maxY = -1;
-
-        for (let i = 0; i < frame.length; i += 16) {
-          const pixelIndex = i / 4;
-          const x = pixelIndex % hiddenCanvas.width;
-          const y = Math.floor(pixelIndex / hiddenCanvas.width);
-          const xRatio = x / hiddenCanvas.width;
-          const yRatio = y / hiddenCanvas.height;
-          const inHandHeightBand = yRatio >= handZoneTopRatio && yRatio <= handZoneBottomRatio;
-          const inLeftHandZone = inHandHeightBand && xRatio <= handZoneSideRatio;
-          const inRightHandZone = inHandHeightBand && xRatio >= (1 - handZoneSideRatio);
-
-          const dr = Math.abs(frame[i] - lastFrame[i]);
-          const dg = Math.abs(frame[i + 1] - lastFrame[i + 1]);
-          const db = Math.abs(frame[i + 2] - lastFrame[i + 2]);
-          const delta = (dr + dg + db) / 3;
-
-          const inRaiseZoneCheck = yRatio >= raiseZoneTopRatio
-            && yRatio <= raiseZoneBottomRatio
-            && xRatio >= raiseZoneLeftRatio
-            && xRatio <= raiseZoneRightRatio;
-
-          if (delta > movementPixelThreshold) {
-            changed += 1;
-            if (inLeftHandZone) {
-              leftHandZoneChanged += 1;
-              handZoneChanged += 1;
-            } else if (inRightHandZone) {
-              rightHandZoneChanged += 1;
-              handZoneChanged += 1;
-            }
-            if (inRaiseZoneCheck) raiseZoneMotion += 1;
-            if (inHandHeightBand) {
-              handBandMotionSumX += xRatio;
-              handBandMotionCount += 1;
-            }
-          }
-
-          const bdr = Math.abs(frame[i] - backgroundFrame[i]);
-          const bdg = Math.abs(frame[i + 1] - backgroundFrame[i + 1]);
-          const bdb = Math.abs(frame[i + 2] - backgroundFrame[i + 2]);
-          const bgDelta = (bdr + bdg + bdb) / 3;
-          const isForeground = bgDelta > foregroundDeltaThreshold;
-          if (isForeground) {
-            foregroundPixels += 1;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-            const inRaiseZone = yRatio >= raiseZoneTopRatio
-              && yRatio <= raiseZoneBottomRatio
-              && xRatio >= raiseZoneLeftRatio
-              && xRatio <= raiseZoneRightRatio;
-            if (inRaiseZone) raiseZoneForeground += 1;
-          } else {
-            backgroundFrame[i] = Math.round(backgroundFrame[i] * (1 - backgroundAlpha) + frame[i] * backgroundAlpha);
-            backgroundFrame[i + 1] = Math.round(backgroundFrame[i + 1] * (1 - backgroundAlpha) + frame[i + 1] * backgroundAlpha);
-            backgroundFrame[i + 2] = Math.round(backgroundFrame[i + 2] * (1 - backgroundAlpha) + frame[i + 2] * backgroundAlpha);
-          }
-
-          samples += 1;
-        }
-
-        const presenceRatio = samples > 0 ? foregroundPixels / samples : 0;
-        const motionRatio = samples > 0 ? changed / samples : 0;
-        let presenceBoxRatio = 0;
-        if (foregroundPixels > 0 && maxX >= minX && maxY >= minY) {
-          const boxArea = (maxX - minX + 1) * (maxY - minY + 1);
-          presenceBoxRatio = boxArea / (hiddenCanvas.width * hiddenCanvas.height);
-        }
-
+        /* Presence streaks from pixel analysis */
         const hasForegroundPresence = presenceRatio >= minPresenceRatio
           && presenceBoxRatio >= minPresenceBoxRatio
           && presenceBoxRatio <= maxPresenceBoxRatio;
@@ -265,57 +298,73 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         if (hasPresence) presenceStreak += 1;
         else presenceStreak = Math.max(0, presenceStreak - 1);
 
-        const hasAnyHandMotion = handZoneChanged >= minSideMotionPixels;
-        if (hasAnyHandMotion) handMoveStreak += 1;
-        else handMoveStreak = Math.max(0, handMoveStreak - 1);
+        /* ── MediaPipe hand landmark detection ── */
+        let mpLandmarks = null;
+        let mpHandedness = null;
+        let wristY = -1;
+        let palmX = -1;
+        let swipeDx = 0;
+        let handRaised = false;
 
-        const hasHandRaise = raiseZoneMotion >= minRaiseForegroundPixels;
-        if (hasHandRaise) handRaiseStreak += 1;
-        else handRaiseStreak = Math.max(0, handRaiseStreak - 1);
+        if (mpReady && handLandmarker) {
+          try {
+            const results = handLandmarker.detectForVideo(camEl, performance.now());
+            if (results.landmarks && results.landmarks.length > 0) {
+              mpLandmarks = results.landmarks[0];
+              mpHandedness = results.handednesses && results.handednesses[0]
+                ? results.handednesses[0][0].displayName : 'Unknown';
 
-        /* ── Swipe centroid tracking ── */
-        const handMotionCentroidX = handBandMotionCount >= minSideMotionPixels
-          ? handBandMotionSumX / handBandMotionCount : 0.5;
-        const hasEnoughHandMotion = handBandMotionCount >= minSideMotionPixels;
-        if (hasEnoughHandMotion) {
-          const inCenter = handMotionCentroidX >= 0.33 && handMotionCentroidX <= 0.66;
-          const inRight = handMotionCentroidX > 0.66;
-          const inLeft = handMotionCentroidX < 0.33;
-          if (inCenter) {
-            handCentroidWasCenter = true;
-            swipeRightStreak = 0;
-            swipeLeftStreak = 0;
-          } else if (handCentroidWasCenter && inRight) {
-            swipeRightStreak += 1;
-            swipeLeftStreak = 0;
-          } else if (handCentroidWasCenter && inLeft) {
-            swipeLeftStreak += 1;
-            swipeRightStreak = 0;
+              const wrist = mpLandmarks[0];
+              const indexMcp = mpLandmarks[5];
+              const middleMcp = mpLandmarks[9];
+              const ringMcp = mpLandmarks[13];
+              const pinkyMcp = mpLandmarks[17];
+
+              wristY = wrist.y;
+              palmX = (wrist.x + indexMcp.x + middleMcp.x + ringMcp.x + pinkyMcp.x) / 5;
+
+              /* Hand raise: wrist in upper portion of frame */
+              handRaised = wristY < raiseZoneBottomRatio;
+              if (handRaised) handRaiseStreak += 1;
+              else handRaiseStreak = Math.max(0, handRaiseStreak - 1);
+
+              /* Swipe: smoothed palm X velocity between frames */
+              if (prevPalmX !== null) {
+                const rawDx = palmX - prevPalmX;
+                smoothedVelocity = smoothedVelocity * 0.2 + rawDx * 0.8;
+                swipeDx = smoothedVelocity;
+                const swipeThreshold = 0.008;
+                if (swipeDx > swipeThreshold) {
+                  swipeRightStreak += 1;
+                  swipeLeftStreak = 0;
+                } else if (swipeDx < -swipeThreshold) {
+                  swipeLeftStreak += 1;
+                  swipeRightStreak = 0;
+                } else {
+                  swipeRightStreak = Math.max(0, swipeRightStreak - 1);
+                  swipeLeftStreak = Math.max(0, swipeLeftStreak - 1);
+                }
+              }
+              prevPalmX = palmX;
+
+              handDetectedStreak += 1;
+            } else {
+              /* No hand visible */
+              handRaiseStreak = Math.max(0, handRaiseStreak - 1);
+              swipeRightStreak = Math.max(0, swipeRightStreak - 1);
+              swipeLeftStreak = Math.max(0, swipeLeftStreak - 1);
+              prevPalmX = null;
+              smoothedVelocity = 0;
+              handDetectedStreak = 0;
+            }
+          } catch (e) {
+            /* MediaPipe frame error — skip silently */
           }
-        } else {
-          handCentroidWasCenter = false;
-          swipeRightStreak = Math.max(0, swipeRightStreak - 1);
-          swipeLeftStreak = Math.max(0, swipeLeftStreak - 1);
         }
 
-        const dominantLeft = leftHandZoneChanged >= minSideMotionPixels && leftHandZoneChanged > rightHandZoneChanged * dominanceFactor;
-        const dominantRight = rightHandZoneChanged >= minSideMotionPixels && rightHandZoneChanged > leftHandZoneChanged * dominanceFactor;
-        const rightHandDetected = mirrorHandedness ? dominantLeft : dominantRight;
-        const leftHandDetected = mirrorHandedness ? dominantRight : dominantLeft;
-
-        if (rightHandDetected) {
-          rightHandStreak += 1;
-          leftHandStreak = Math.max(0, leftHandStreak - 1);
-        } else if (leftHandDetected) {
-          leftHandStreak += 1;
-          rightHandStreak = Math.max(0, rightHandStreak - 1);
-        } else {
-          rightHandStreak = Math.max(0, rightHandStreak - 1);
-          leftHandStreak = Math.max(0, leftHandStreak - 1);
-        }
-
+        /* ── State-based event logic ── */
         let eventType = null;
-        let detectorLabel = 'Watching for movement...';
+        let detectorLabel = mpReady ? 'Hand tracking active' : 'Watching for movement...';
         let handSide = null;
 
         let currentState = initialState;
@@ -327,7 +376,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         if (currentState === 'IDLE') {
           menuReadyAt = Number.POSITIVE_INFINITY;
 
-          /* ── Two-phase presence confirmation ── */
+          /* Two-phase presence confirmation (pixel-based) */
           if (presenceStreak >= presenceStreakRequired) {
             if (presenceFirstDetectedAt === 0) {
               presenceFirstDetectedAt = now;
@@ -337,11 +386,11 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
               presenceConfirmStreak += 1;
               if (presenceConfirmStreak >= presenceConfirmStreakRequired) {
                 eventType = 'movement_detected';
-                detectorLabel = hasForegroundPresence ? 'Presence confirmed' : 'Motion confirmed';
+                detectorLabel = 'Presence confirmed';
                 presenceFirstDetectedAt = 0;
                 presenceConfirmStreak = 0;
               } else {
-                detectorLabel = 'Confirming presence (' + presenceConfirmStreak + '/' + presenceConfirmStreakRequired + ')...';
+                detectorLabel = 'Confirming (' + presenceConfirmStreak + '/' + presenceConfirmStreakRequired + ')...';
               }
             } else {
               detectorLabel = 'Presence sensed, hold still...';
@@ -363,12 +412,15 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
             eventType = 'visitor_selected';
             detectorLabel = 'Hand raised — selecting visitor';
           } else {
-            detectorLabel = 'Raise your hand to continue...';
+            detectorLabel = mpLandmarks
+              ? 'Hand seen (wristY: ' + wristY.toFixed(2) + ') — raise higher!'
+              : 'Raise your hand to continue...';
           }
         } else if (currentState === 'VISITOR_INFO' || currentState === 'STUDENT_INFO') {
           presenceFirstDetectedAt = 0;
           presenceConfirmStreak = 0;
           menuReadyAt = Number.POSITIVE_INFINITY;
+
           const swipeRight = swipeRightStreak >= handDirectionStreakRequired;
           const swipeLeft = swipeLeftStreak >= handDirectionStreakRequired;
           if (swipeRight) {
@@ -379,13 +431,14 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
             eventType = mirrorHandedness ? 'scroll_next' : 'scroll_prev';
             handSide = mirrorHandedness ? 'right' : 'left';
             detectorLabel = 'Swipe left -> ' + (mirrorHandedness ? 'next' : 'prev');
-          } else if (handCentroidWasCenter && hasEnoughHandMotion) {
-            detectorLabel = 'Hand in center, swipe to scroll...';
+          } else if (mpLandmarks) {
+            detectorLabel = 'Hand tracked — swipe L/R to scroll';
           } else {
-            detectorLabel = 'Move hand to center, then swipe L/R';
+            detectorLabel = 'Show your hand, then swipe L/R';
           }
         }
 
+        /* ── Fire event ── */
         if (eventType) {
           const eventCooldownMs = cooldownByEvent[eventType] || 900;
           const inCooldown = now - lastDetectedAt < eventCooldownMs;
@@ -394,85 +447,140 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
             setDetectorUi(true, detectorLabel);
             showMovementToast();
             sendDetectorEvent(eventType, {
-              confidence: Number(presenceRatio.toFixed(3)),
+              confidence: mpLandmarks ? 0.9 : Number(presenceRatio.toFixed(3)),
               direction: handSide,
               handSide,
             }).catch(() => {
               setDetectorUi(false, 'Detector event failed');
             });
-            handMoveStreak = 0;
             handRaiseStreak = 0;
-            rightHandStreak = 0;
-            leftHandStreak = 0;
             swipeRightStreak = 0;
             swipeLeftStreak = 0;
-            handCentroidWasCenter = false;
+            smoothedVelocity = 0;
           }
         } else {
           setDetectorUi(false, detectorLabel);
         }
 
-        /* ── Debug overlay rendering ── */
+        /* ── Hand tracker overlay (always visible on cam widget) ── */
+        const htCanvas = document.getElementById('handTrackerCanvas');
+        if (htCanvas && camEl.videoWidth) {
+          const htCtx = htCanvas.getContext('2d');
+          htCanvas.width = camEl.videoWidth || 320;
+          htCanvas.height = camEl.videoHeight || 240;
+          htCtx.clearRect(0, 0, htCanvas.width, htCanvas.height);
+          const HW = htCanvas.width;
+          const HH = htCanvas.height;
+
+          if (mpLandmarks) {
+            /* Draw connections */
+            htCtx.strokeStyle = '#00ff00';
+            htCtx.lineWidth = 2;
+            for (const [a, b] of HAND_CONNECTIONS) {
+              const la = mpLandmarks[a];
+              const lb = mpLandmarks[b];
+              htCtx.beginPath();
+              htCtx.moveTo(la.x * HW, la.y * HH);
+              htCtx.lineTo(lb.x * HW, lb.y * HH);
+              htCtx.stroke();
+            }
+            /* Draw landmark dots */
+            for (let li = 0; li < mpLandmarks.length; li++) {
+              const lm = mpLandmarks[li];
+              htCtx.fillStyle = li === 0 ? '#ff4444' : '#44ff44';
+              htCtx.beginPath();
+              htCtx.arc(lm.x * HW, lm.y * HH, li === 0 ? 5 : 3, 0, Math.PI * 2);
+              htCtx.fill();
+            }
+            /* Palm centroid */
+            htCtx.fillStyle = '#ffff00';
+            htCtx.beginPath();
+            htCtx.arc(palmX * HW, wristY * HH, 6, 0, Math.PI * 2);
+            htCtx.fill();
+          }
+
+          /* Raise zone line */
+          htCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+          htCtx.lineWidth = 1;
+          htCtx.setLineDash([4, 4]);
+          const raiseLineY = Math.round(raiseZoneBottomRatio * HH);
+          htCtx.beginPath();
+          htCtx.moveTo(0, raiseLineY);
+          htCtx.lineTo(HW, raiseLineY);
+          htCtx.stroke();
+          htCtx.setLineDash([]);
+
+          /* Status text on tracker */
+          htCtx.font = '10px monospace';
+          htCtx.fillStyle = mpReady ? (mpLandmarks ? '#44ff44' : '#ffaa00') : '#ff4444';
+          const statusTxt = !mpReady ? 'MP: OFF' : (mpLandmarks ? 'TRACKING' : 'NO HAND');
+          htCtx.fillText(statusTxt, 4, HH - 4);
+        }
+
+        /* ── Debug overlay ── */
         if (debugVisible) {
           const dCtx = debugCanvas.getContext('2d');
-          debugCanvas.width = hiddenCanvas.width;
-          debugCanvas.height = hiddenCanvas.height;
-          dCtx.drawImage(hiddenCanvas, 0, 0);
+          debugCanvas.width = camEl.videoWidth || 320;
+          debugCanvas.height = camEl.videoHeight || 240;
+          dCtx.drawImage(camEl, 0, 0, debugCanvas.width, debugCanvas.height);
 
-          dCtx.globalAlpha = 0.25;
+          const W = debugCanvas.width;
+          const H = debugCanvas.height;
 
           /* Raise zone — cyan */
+          dCtx.globalAlpha = 0.2;
           dCtx.fillStyle = '#00ffff';
-          const rzX = Math.round(raiseZoneLeftRatio * hiddenCanvas.width);
-          const rzY = Math.round(raiseZoneTopRatio * hiddenCanvas.height);
-          const rzW = Math.round((raiseZoneRightRatio - raiseZoneLeftRatio) * hiddenCanvas.width);
-          const rzH = Math.round((raiseZoneBottomRatio - raiseZoneTopRatio) * hiddenCanvas.height);
-          dCtx.fillRect(rzX, rzY, rzW, rzH);
-
-          /* Hand band zones — left (red), center (green), right (blue) */
-          const hTop = Math.round(handZoneTopRatio * hiddenCanvas.height);
-          const hBot = Math.round(handZoneBottomRatio * hiddenCanvas.height);
-          const hLeftEnd = Math.round(0.33 * hiddenCanvas.width);
-          const hRightStart = Math.round(0.66 * hiddenCanvas.width);
-
-          dCtx.fillStyle = '#ff4444';
-          dCtx.fillRect(0, hTop, hLeftEnd, hBot - hTop);
-
-          dCtx.fillStyle = '#44ff44';
-          dCtx.fillRect(hLeftEnd, hTop, hRightStart - hLeftEnd, hBot - hTop);
-
-          dCtx.fillStyle = '#4444ff';
-          dCtx.fillRect(hRightStart, hTop, hiddenCanvas.width - hRightStart, hBot - hTop);
-
+          dCtx.fillRect(0, 0, W, Math.round(raiseZoneBottomRatio * H));
           dCtx.globalAlpha = 1.0;
-
-          /* Zone labels */
-          dCtx.font = '7px monospace';
+          dCtx.font = '12px monospace';
           dCtx.fillStyle = '#00ffff';
-          dCtx.fillText('RAISE', rzX + 2, rzY + 8);
-          dCtx.fillStyle = '#ff6666';
-          dCtx.fillText('L', 2, hTop + 10);
-          dCtx.fillStyle = '#66ff66';
-          dCtx.fillText('C', hLeftEnd + 2, hTop + 10);
-          dCtx.fillStyle = '#6666ff';
-          dCtx.fillText('R', hRightStart + 2, hTop + 10);
+          dCtx.fillText('RAISE ZONE', 4, 14);
+
+          /* Draw hand skeleton if available */
+          if (mpLandmarks) {
+            /* Connections */
+            dCtx.strokeStyle = '#00ff00';
+            dCtx.lineWidth = 2;
+            for (const [a, b] of HAND_CONNECTIONS) {
+              const la = mpLandmarks[a];
+              const lb = mpLandmarks[b];
+              dCtx.beginPath();
+              dCtx.moveTo(la.x * W, la.y * H);
+              dCtx.lineTo(lb.x * W, lb.y * H);
+              dCtx.stroke();
+            }
+
+            /* Landmark dots */
+            for (let li = 0; li < mpLandmarks.length; li++) {
+              const lm = mpLandmarks[li];
+              dCtx.fillStyle = li === 0 ? '#ff0000' : '#00ff00';
+              dCtx.beginPath();
+              dCtx.arc(lm.x * W, lm.y * H, li === 0 ? 5 : 3, 0, Math.PI * 2);
+              dCtx.fill();
+            }
+
+            /* Palm centroid marker */
+            dCtx.fillStyle = '#ffff00';
+            dCtx.beginPath();
+            dCtx.arc(palmX * W, wristY * H, 6, 0, Math.PI * 2);
+            dCtx.fill();
+          }
 
           debugText.textContent =
-            'STATE: ' + currentState + '\\n'
-            + '--- Presence ---\\n'
+            'STATE: ' + currentState
+            + '  |  MP: ' + (mpReady ? 'ON' : 'OFF')
+            + '  |  hand: ' + (mpLandmarks ? mpHandedness : 'none') + '\\n'
+            + '--- Presence (pixel) ---\\n'
             + 'fgRatio:   ' + presenceRatio.toFixed(3) + ' (min ' + minPresenceRatio + ')\\n'
-            + 'boxRatio:  ' + presenceBoxRatio.toFixed(3) + ' [' + minPresenceBoxRatio + '-' + maxPresenceBoxRatio + ']\\n'
-            + 'motionR:   ' + motionRatio.toFixed(3) + ' (min ' + minMotionRatio + ')\\n'
+            + 'boxRatio:  ' + presenceBoxRatio.toFixed(3) + '\\n'
             + 'presStrk:  ' + presenceStreak + '/' + presenceStreakRequired + '\\n'
-            + 'confirmed: ' + (presenceFirstDetectedAt > 0 ? 'waiting ' + Math.round(now - presenceFirstDetectedAt) + 'ms' : 'no') + '\\n'
             + 'confStrk:  ' + presenceConfirmStreak + '/' + presenceConfirmStreakRequired + '\\n'
-            + '--- Hand Raise ---\\n'
-            + 'raiseMot:  ' + raiseZoneMotion + ' (min ' + minRaiseForegroundPixels + ')\\n'
-            + 'raiseFg:   ' + raiseZoneForeground + '\\n'
+            + '--- Hand (MediaPipe) ---\\n'
+            + 'wristY:    ' + (wristY >= 0 ? wristY.toFixed(3) : '-') + ' (raise < ' + raiseZoneBottomRatio + ')\\n'
+            + 'palmX:     ' + (palmX >= 0 ? palmX.toFixed(3) : '-') + '\\n'
+            + 'velocity:  ' + (smoothedVelocity !== 0 ? smoothedVelocity.toFixed(4) : '-') + ' (thr 0.008)\\n'
+            + 'swipeDx:   ' + (swipeDx !== 0 ? swipeDx.toFixed(4) : '-') + '\\n'
             + 'raiseStrk: ' + handRaiseStreak + '/' + handRaiseStreakRequired + '\\n'
-            + '--- Swipe ---\\n'
-            + 'centroidX: ' + handMotionCentroidX.toFixed(2) + ' (motionPx: ' + handBandMotionCount + ')\\n'
-            + 'wasCenter: ' + handCentroidWasCenter + '\\n'
             + 'swipeL:    ' + swipeLeftStreak + '/' + handDirectionStreakRequired + '\\n'
             + 'swipeR:    ' + swipeRightStreak + '/' + handDirectionStreakRequired + '\\n'
             + 'mirror:    ' + mirrorHandedness + '\\n'
