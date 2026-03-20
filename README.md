@@ -124,7 +124,7 @@ stateDiagram-v2
 
     IDLE --> MENU : 👁️ movement detected
 
-    MENU --> VISITOR_INFO : 🖱️ visitor selected
+    MENU --> VISITOR_INFO : ✋ hand raised
     MENU --> STUDENT_INFO : 📱 NFC tap (known student)
     MENU --> IDLE : ⏱️ inactivity timeout
 
@@ -430,5 +430,6 @@ All test suites pass in a normal local environment. Admin integration tests bind
 | [Player API Reference](docs/api/player.md) | Full player endpoint documentation |
 | [Deployment Guide](docs/operations/deployment-pi.md) | Raspberry Pi setup and operations |
 | [Testing Guide](docs/testing.md) | Test coverage and verification |
+| [Repo Assessment](docs/repo-assessment.md) | Repo health, code quality review, and size breakdown |
 | [Glossary](docs/glossary.md) | Project terminology |
 | [Status & Roadmap](docs/status.md) | Current state and next steps |

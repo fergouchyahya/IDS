@@ -54,7 +54,7 @@ stateDiagram-v2
 
     IDLE --> MENU : 👁️ movement_detected
 
-    MENU --> VISITOR_INFO : 🖱️ visitor_selected
+    MENU --> VISITOR_INFO : ✋ visitor_selected (hand raised)
     MENU --> STUDENT_INFO : 📱 nfc_tap (known student)
     MENU --> IDLE : ⏱️ inactivity timeout
 
