@@ -39,7 +39,7 @@ npm --prefix player test    # Run all tests
 stateDiagram-v2
     [*] --> IDLE
     IDLE --> MENU : movement
-    MENU --> VISITOR_INFO : visitor selected
+    MENU --> VISITOR_INFO : hand raised
     MENU --> STUDENT_INFO : NFC tap
     MENU --> IDLE : timeout
     VISITOR_INFO --> IDLE : timeout

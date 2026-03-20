@@ -212,7 +212,7 @@ flowchart LR
 |------|--------------|---------|
 | **Idle** | No one is interacting | Default / inactivity timeout |
 | **Menu** | Someone is detected | `movement_detected` event |
-| **Visitor** | Generic visitor path selected | `visitor_selected` event |
+| **Visitor** | Visitor raises hand to proceed | `visitor_selected` event (hand raise detected) |
 | **Student** | Student identified by NFC | `nfc_tap` with known UID |
 
 ---

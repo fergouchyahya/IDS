@@ -1,0 +1,117 @@
+{
+  "settings": {
+    "inactivityTimeoutMs": 15000
+  },
+  "idleCampaign": {
+    "campaignId": "idle-welcome",
+    "campaignName": "Idle Welcome",
+    "campaignPriority": 10,
+    "items": [
+      {
+        "contentId": "idle-1",
+        "type": "TEXT",
+        "data": "Welcome to IDS — Interactive Digital Signage",
+        "order": 1,
+        "durationSec": 120
+      },
+      {
+        "contentId": "idle-2",
+        "type": "TEXT",
+        "data": "Step closer to interact",
+        "order": 2,
+        "durationSec": 120
+      }
+    ]
+  },
+  "menuCampaign": {
+    "campaignId": "menu-choices",
+    "campaignName": "Interaction Menu",
+    "campaignPriority": 20,
+    "items": [
+      {
+        "contentId": "menu-1",
+        "type": "TEXT",
+        "data": "Raise your hand to browse as a visitor",
+        "order": 1,
+        "durationSec": 60
+      },
+      {
+        "contentId": "menu-2",
+        "type": "TEXT",
+        "data": "Tap your NFC card for personalized content",
+        "order": 2,
+        "durationSec": 60
+      }
+    ]
+  },
+  "visitorCampaign": {
+    "campaignId": "info-visitor",
+    "campaignName": "Visitor Info",
+    "campaignPriority": 30,
+    "items": [
+      {
+        "contentId": "visitor-1",
+        "type": "TEXT",
+        "data": "Welcome, visitor! Here is our school info.",
+        "order": 1,
+        "durationSec": 30
+      },
+      {
+        "contentId": "visitor-2",
+        "type": "TEXT",
+        "data": "Swipe right for more, swipe left to go back.",
+        "order": 2,
+        "durationSec": 30
+      },
+      {
+        "contentId": "visitor-3",
+        "type": "TEXT",
+        "data": "Visit us at reception for a campus tour!",
+        "order": 3,
+        "durationSec": 30
+      }
+    ]
+  },
+  "students": [
+    {
+      "nfcUid": "04295202c66780",
+      "name": "Fergyah",
+      "campaign": {
+        "campaignId": "student-fergyah",
+        "campaignName": "Fergyah's Dashboard",
+        "campaignPriority": 50,
+        "items": [
+          {
+            "contentId": "fergyah-1",
+            "type": "TEXT",
+            "data": "Welcome back, Fergyah!",
+            "order": 1,
+            "durationSec": 30
+          },
+          {
+            "contentId": "fergyah-2",
+            "type": "TEXT",
+            "data": "Next class: Project S8 — Room 204 at 10:00",
+            "order": 2,
+            "durationSec": 30
+          },
+          {
+            "contentId": "fergyah-3",
+            "type": "TEXT",
+            "data": "Upcoming deadline: Final presentation — March 28",
+            "order": 3,
+            "durationSec": 30
+          },
+          {
+            "contentId": "fergyah-4",
+            "type": "TEXT",
+            "data": "Campus event: Hackathon this Saturday!",
+            "order": 4,
+            "durationSec": 30
+          }
+        ]
+      }
+    }
+  ],
+  "updatedAt": "2026-03-20T12:00:00Z"
+}
