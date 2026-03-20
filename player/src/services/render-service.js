@@ -380,6 +380,10 @@ const PLAYER_PAGE_STYLES = `
       overflow: hidden;
     }
 
+    .movement-cam-wrap {
+      position: relative;
+    }
+
     .movement-head {
       display: flex;
       align-items: center;
@@ -765,6 +769,12 @@ function renderUI(stateMachine, options = {}) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IDS Player</title>
+  <script type="module">
+    import { FilesetResolver, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs';
+    window.FilesetResolver = FilesetResolver;
+    window.HandLandmarker = HandLandmarker;
+    window.dispatchEvent(new Event('mediapipe-loaded'));
+  </script>
   <style>${PLAYER_PAGE_STYLES}</style>
 </head>
 <body class="player-body ${stateClass}">
@@ -778,7 +788,10 @@ function renderUI(stateMachine, options = {}) {
       <span id="movementDot" class="movement-dot"></span>
       <span id="movementStatus">Detector booting...</span>
     </div>
-    <video id="movementCam" class="movement-cam" autoplay muted playsinline></video>
+    <div class="movement-cam-wrap">
+      <video id="movementCam" class="movement-cam" autoplay muted playsinline></video>
+      <canvas id="handTrackerCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:8px;transform:scaleX(-1);"></canvas>
+    </div>
     <div id="movementToast" class="movement-toast">Movement detected</div>
   </aside>
   ${renderDebugPanel(status, forceDebug)}
