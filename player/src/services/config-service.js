@@ -36,7 +36,7 @@ const DEFAULT_DETECTOR_CONFIG = Object.freeze({
   presenceConfirmGapMs: 400,
   presenceConfirmStreakRequired: 2,
   handMoveStreakRequired: 3,
-  handDirectionStreakRequired: 2,
+  handDirectionStreakRequired: 1,
   handRaiseStreakRequired: 4,
   menuDecisionDelayMs: 900,
   handZoneTopRatio: 0.12,
@@ -51,8 +51,8 @@ const DEFAULT_DETECTOR_CONFIG = Object.freeze({
   cooldownByEvent: {
     movement_detected: 1700,
     visitor_selected: 800,
-    scroll_next: 350,
-    scroll_prev: 350,
+    scroll_next: 200,
+    scroll_prev: 200,
   },
 });
 
