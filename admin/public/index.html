@@ -48,6 +48,7 @@
             </h1>
           </div>
           <div class="header-actions">
+            <button class="btn btn-ghost" id="previewPlayerBtn" onclick="window.open('http://' + location.hostname + ':7070', '_blank')">&#x25B6; Preview Player</button>
             <button class="btn btn-secondary" id="publishBtn" onclick="publishCampaign()">Publish</button>
             <button class="btn btn-primary" id="saveCampaignBtn" onclick="saveBuilderCampaign()">Save</button>
           </div>
@@ -62,7 +63,8 @@
             <label for="studentUid">Student UID:</label>
             <input type="text" id="studentUid" placeholder="e.g. stu-001" style="width: 120px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;" />
           </div>
-          <div style="margin-left: auto;">
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <span class="sync-indicator" id="syncBadge" title="Player connection status">&#x25CF; Checking&hellip;</span>
             <span class="status-indicator" id="statusBadge">Draft</span>
           </div>
         </div>
@@ -95,6 +97,12 @@
   <div id="status" class="status-toast"></div>
 
   <script src="/services/http.js"></script>
+  <script>
+    // Prompt for API key on first load if not already stored
+    if (!AdminHttp.hasApiKey()) {
+      AdminHttp.promptApiKey("Enter admin API key to manage campaigns:");
+    }
+  </script>
   <script src="/services/state-store.js"></script>
   <script src="/services/campaign-selectors.js"></script>
   <script src="/services/validation.js"></script>
@@ -115,5 +123,27 @@
   <script src="/components/inspector.js"></script>
   <script src="/admin-ui.js"></script>
   <script src="/app.js"></script>
+  <script>
+    // Player sync indicator — polls player health every 5s
+    (function initSyncIndicator() {
+      const badge = document.getElementById('syncBadge');
+      if (!badge) return;
+      const playerBase = 'http://' + location.hostname + ':7070';
+      function check() {
+        fetch(playerBase + '/current', { mode: 'cors' })
+          .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(function() {
+            badge.textContent = '\u25CF Player connected';
+            badge.className = 'sync-indicator synced';
+          })
+          .catch(function() {
+            badge.textContent = '\u25CB Player offline';
+            badge.className = 'sync-indicator offline';
+          });
+      }
+      check();
+      setInterval(check, 5000);
+    })();
+  </script>
 </body>
 </html>

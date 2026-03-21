@@ -30,7 +30,7 @@ function createHealthService({ storage }) {
         idleCampaigns: state.idleCampaigns.length,
         visitorCampaigns: state.visitorCampaigns.length,
         students: state.students.length,
-        studentProfiles: state.studentProfiles.length,
+        studentProfiles: storage.getStudentProfileCount(),
       },
     };
   }

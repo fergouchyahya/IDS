@@ -82,7 +82,9 @@ The current state machine snapshot.
   "item": { "contentId": "...", "type": "TEXT", "data": "..." },
   "currentStudentUid": null,
   "inactivityTimeoutMs": 30000,
-  "runtimeUpdatedAt": "2026-03-13T10:00:00.000Z"
+  "runtimeUpdatedAt": "2026-03-13T10:00:00.000Z",
+  "lastNfcError": null,
+  "timeoutEndsAt": 1711036800000
 }
 ```
 
@@ -157,6 +159,7 @@ The state machine normalizes event names automatically:
 | `nfc` | `nfc_tap` |
 | `right_hand_move` | `scroll_next` |
 | `left_hand_move` | `scroll_prev` |
+| `presence_keepalive` | `presence_keepalive` |
 
 ---
 
@@ -191,7 +194,7 @@ Authenticated endpoint for other detector events (NFC, gestures, etc.).
 }
 ```
 
-**Allowed event types** are filtered by `player/src/detector/event-utils.js`.
+**Allowed event types** are filtered by `player/src/detector/event-utils.js`: `movement_detected`, `visitor_selected`, `scroll_next`, `scroll_prev`, `nfc_tap`, `presence_keepalive`.
 
 **Errors:**
 - `403` — wrong or missing detector token
@@ -227,6 +230,8 @@ classDiagram
         currentStudentUid : string?
         inactivityTimeoutMs : number
         runtimeUpdatedAt : string
+        lastNfcError : string?
+        timeoutEndsAt : number?
     }
 
     class EventResponse {
@@ -257,6 +262,10 @@ classDiagram
 - Player binds to `127.0.0.1` by default — set `PLAYER_HOST=0.0.0.0` for network access
 - When `IDS_ADMIN_URL` is configured, the player syncs runtime config from admin on events
 - Student campaigns are loaded lazily from admin during NFC interactions
+- `lastNfcError` is set to `"card_not_recognized"` when an unknown NFC card is tapped; the render service shows a warning banner on the menu page. Cleared on next successful event.
+- `timeoutEndsAt` is a Unix timestamp (ms) indicating when the inactivity timer will fire. The client uses this to show a countdown toast when less than 5 seconds remain. `null` when in IDLE or no timer is active.
+- `presence_keepalive` events are sent automatically by the browser detector every 3 seconds while someone is in front of the camera in a non-IDLE state. They are acknowledged but do **not** reset the inactivity timer — only real interactions (gestures, NFC taps, scrolls) reset it. This ensures the display returns to IDLE after a period of no interaction, even if someone is still standing in front of the camera.
+- When a student taps the same NFC card while already viewing their STUDENT_INFO, the state machine treats it as a keepalive (action: `nfc_keepalive`) — the carousel position is preserved but the inactivity timer is **not** reset.
 
 ---
 

@@ -26,13 +26,14 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
       const initialState = ${JSON.stringify(currentState)};
       const camEl = document.getElementById('movementCam');
       const dotEl = document.getElementById('movementDot');
-      const statusEl = document.getElementById('movementStatus');
+      const badgeEl = document.getElementById('movementBadge');
       const toastEl = document.getElementById('movementToast');
-      if (!token || !camEl || !dotEl || !statusEl || !toastEl) return;
+      if (!token || !camEl || !dotEl || !badgeEl || !toastEl) return;
 
       function setDetectorUi(active, label) {
         dotEl.classList.toggle('active', Boolean(active));
-        statusEl.textContent = label;
+        badgeEl.classList.toggle('active', Boolean(active));
+        badgeEl.textContent = active ? 'Active' : label || 'Standby';
       }
 
       function showMovementToast() {
@@ -82,7 +83,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
       });
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setDetectorUi(false, 'Camera API unavailable');
+        setDetectorUi(false, 'No Camera');
         return;
       }
 
@@ -93,7 +94,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         }).catch(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false }));
         camEl.srcObject = stream;
       } catch (e) {
-        setDetectorUi(false, 'Camera blocked');
+        setDetectorUi(false, 'Blocked');
         return;
       }
 
@@ -143,7 +144,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         }
       }
 
-      setDetectorUi(false, 'Loading hand tracking model...');
+      setDetectorUi(false, 'Loading...');
 
       /* Wait for the ES module to expose MediaPipe globals on window */
       if (typeof HandLandmarker === 'undefined' || typeof FilesetResolver === 'undefined') {
@@ -187,6 +188,10 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
       let prevPalmX = null;
       let smoothedVelocity = 0;
       let handDetectedStreak = 0;
+
+      /* Presence keepalive for non-IDLE states */
+      let lastKeepaliveAt = 0;
+      const keepaliveIntervalMs = 3000;
 
       /* Config shortcuts */
       const analyzeEveryMs = detectorConfig.analyzeEveryMs;
@@ -282,7 +287,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
         } else {
           lastFrame = frame;
           backgroundFrame = frame.slice();
-          setDetectorUi(false, mpReady ? 'Hand tracking ready' : 'Watching for movement...');
+          setDetectorUi(false, mpReady ? 'Ready' : 'Standby');
           requestAnimationFrame(analyze);
           return;
         }
@@ -369,8 +374,8 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
 
         let currentState = initialState;
         const liveStateElement = document.querySelector('.state');
-        if (liveStateElement) {
-          currentState = String(liveStateElement.textContent || '').trim().toUpperCase();
+        if (liveStateElement && liveStateElement.dataset.state) {
+          currentState = liveStateElement.dataset.state.trim().toUpperCase();
         }
 
         if (currentState === 'IDLE') {
@@ -444,6 +449,7 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
           const inCooldown = now - lastDetectedAt < eventCooldownMs;
           if (!inCooldown) {
             lastDetectedAt = now;
+            lastKeepaliveAt = now;
             setDetectorUi(true, detectorLabel);
             showMovementToast();
             sendDetectorEvent(eventType, {
@@ -460,6 +466,12 @@ function buildDetectorClientScript({ detectorToken, currentState, detectorConfig
           }
         } else {
           setDetectorUi(false, detectorLabel);
+        }
+
+        /* ── Presence keepalive: reset inactivity timer while someone is in front of the camera ── */
+        if (currentState !== 'IDLE' && !eventType && hasPresence && now - lastKeepaliveAt >= keepaliveIntervalMs) {
+          lastKeepaliveAt = now;
+          sendDetectorEvent('presence_keepalive').catch(() => {});
         }
 
         /* ── Hand tracker overlay (always visible on cam widget) ── */

@@ -35,6 +35,8 @@ class PlayerStateMachine {
     this.inactivityTimer = null;
     this.inactivityTimeout = this.runtime.settings.inactivityTimeoutMs;
     this.lastActivityAt = Date.now();
+    this.lastNfcError = null;
+    this.timeoutEndsAt = null;
     this.refreshStudentIndex();
   }
 
@@ -59,9 +61,35 @@ class PlayerStateMachine {
     const normalized = normalizeRuntimeConfig(nextRuntime);
     if (!normalized) return false;
 
+    /* Preserve students that were loaded via NFC (upsertRuntimeStudent)
+       but are not in the incoming admin runtime config.  Also prefer the
+       NFC-loaded version when admin sync returns the same UID with a
+       different (or missing) campaign — the on-demand NFC campaign is
+       always more specific than what /runtime-config provides. */
+    const previousStudents = this.runtime.students || [];
     const currentCampaignId = this.currentCampaign?.campaignId;
     this.runtime = normalized;
     this.inactivityTimeout = this.runtime.settings.inactivityTimeoutMs;
+
+    const previousByUid = new Map(
+      previousStudents.filter((s) => s && s.nfcUid && s.campaign).map((s) => [s.nfcUid, s]),
+    );
+    const merged = this.runtime.students.map((s) => {
+      const prev = previousByUid.get(s.nfcUid);
+      /* Keep the NFC-loaded campaign if admin version has none or a different one */
+      if (prev && (!s.campaign || s.campaign.campaignId !== prev.campaign.campaignId)) {
+        return prev;
+      }
+      return s;
+    });
+    /* Also add students only present in previous (not in incoming at all) */
+    const incomingUids = new Set(this.runtime.students.map((s) => s.nfcUid));
+    for (const prev of previousStudents) {
+      if (prev && prev.nfcUid && !incomingUids.has(prev.nfcUid)) {
+        merged.push(prev);
+      }
+    }
+    this.runtime.students = merged;
     this.refreshStudentIndex();
 
     const candidates = [
@@ -79,9 +107,13 @@ class PlayerStateMachine {
       else this.currentItemIndex %= size;
     } else {
       this.transitionToIdle();
+      this.scheduleInactivityTimer();
     }
 
-    this.scheduleInactivityTimer();
+    /* Do NOT reschedule the timer here when staying in the same state —
+       the existing timer is still valid and rescheduling with a stale
+       lastActivityAt would shorten the remaining time incorrectly.
+       The timer will be properly reset by the next handleEvent call. */
     return true;
   }
 
@@ -187,10 +219,20 @@ class PlayerStateMachine {
     if (this.inactivityTimer) clearTimeout(this.inactivityTimer);
     if (this.currentState !== STATE.IDLE) {
       const remainingMs = Math.max(1, this.lastActivityAt + this.inactivityTimeout - Date.now());
+      this.timeoutEndsAt = Date.now() + remainingMs;
+      logger.info("schedule_inactivity_timer", {
+        state: this.currentState,
+        remainingMs,
+        inactivityTimeout: this.inactivityTimeout,
+        lastActivityAgoMs: Date.now() - this.lastActivityAt,
+      });
       this.inactivityTimer = setTimeout(() => {
-        logger.info("inactivity_timeout", { action: "return_to_idle" });
+        logger.info("inactivity_timeout", { action: "return_to_idle", state: this.currentState });
         this.transitionToIdle();
+        this.timeoutEndsAt = null;
       }, remainingMs);
+    } else {
+      this.timeoutEndsAt = null;
     }
   }
 
@@ -208,6 +250,7 @@ class PlayerStateMachine {
     if (type === "nfc_tap" || type === "nfc") return "nfc_tap";
     if (type === "scroll_next" || type === "right_hand_move" || type === "right_hand") return "scroll_next";
     if (type === "scroll_prev" || type === "left_hand_move" || type === "left_hand") return "scroll_prev";
+    if (type === "presence_keepalive") return "presence_keepalive";
 
     if (type === "select") {
       const choice = String(event.choice || "").toLowerCase();
@@ -243,14 +286,22 @@ class PlayerStateMachine {
         || this.currentState === STATE.VISITOR_INFO
         || this.currentState === STATE.STUDENT_INFO)
     ) {
-      const student = this.findStudentByUid(event.nfcUid || event.studentId || event.uid);
+      const uid = String(event.nfcUid || event.studentId || event.uid || "").trim();
+      const student = this.findStudentByUid(uid);
       if (student && student.campaign) {
-        this.currentStudentUid = student.nfcUid;
-        this.transitionTo(STATE.STUDENT_INFO, student.campaign);
-        handled = true;
-        action = "show_student_info";
+        if (this.currentState === STATE.STUDENT_INFO && this.currentStudentUid === uid) {
+          /* Same card tapped again — keep session alive without resetting carousel */
+          handled = true;
+          action = "nfc_keepalive";
+        } else {
+          this.currentStudentUid = student.nfcUid;
+          this.transitionTo(STATE.STUDENT_INFO, student.campaign);
+          handled = true;
+          action = "show_student_info";
+        }
       } else {
         this.transitionToMenu();
+        this.lastNfcError = "card_not_recognized";
         handled = true;
         action = "student_not_found_back_to_menu";
       }
@@ -260,11 +311,26 @@ class PlayerStateMachine {
     } else if (normalized === "scroll_prev") {
       handled = true;
       action = this.advance(-1) ? "scroll_prev" : "single_item_noop";
+    } else if (normalized === "presence_keepalive" && this.currentState !== STATE.IDLE) {
+      handled = true;
+      action = "presence_keepalive";
+    }
+
+    if (handled && action !== "student_not_found_back_to_menu") {
+      this.lastNfcError = null;
     }
 
     if (handled) {
-      this.lastActivityAt = Date.now();
-      this.scheduleInactivityTimer();
+      const isKeepalive = action === "presence_keepalive" || action === "nfc_keepalive";
+      logger.info("event_handled", { normalized, action, state: this.currentState });
+      if (!isKeepalive) {
+        /* Only real interactions reset the inactivity clock.
+           Keepalives acknowledge presence but do NOT postpone timeout,
+           so the display returns to IDLE after the configured duration
+           of no actual gesture / tap. */
+        this.lastActivityAt = Date.now();
+        this.scheduleInactivityTimer();
+      }
     }
 
     return {
@@ -281,13 +347,21 @@ class PlayerStateMachine {
    * @returns {object} Current state snapshot.
    */
   getStatus() {
+    const items = this.currentCampaign?.items || [];
+    const student = this.currentStudentUid
+      ? this.findStudentByUid(this.currentStudentUid)
+      : null;
     return {
       state: this.currentState,
       campaignId: this.currentCampaign?.campaignId || null,
       campaignName: this.currentCampaign?.campaignName || null,
       itemIndex: this.currentItemIndex,
+      itemTotal: items.length,
       item: this.getCurrentItem(),
       currentStudentUid: this.currentStudentUid,
+      currentStudentName: student?.name || null,
+      lastNfcError: this.lastNfcError,
+      timeoutEndsAt: this.timeoutEndsAt,
       inactivityTimeoutMs: this.inactivityTimeout,
       runtimeUpdatedAt: this.runtime.updatedAt,
     };

@@ -56,13 +56,14 @@ stateDiagram-v2
 
     MENU --> VISITOR_INFO : ✋ visitor_selected (hand raised)
     MENU --> STUDENT_INFO : 📱 nfc_tap (known student)
-    MENU --> IDLE : ⏱️ inactivity timeout
+    MENU --> IDLE : ⏱️ inactivity timeout (no interaction)
 
     VISITOR_INFO --> STUDENT_INFO : 📱 nfc_tap (known student)
-    VISITOR_INFO --> IDLE : ⏱️ inactivity timeout
+    VISITOR_INFO --> IDLE : ⏱️ inactivity timeout (no interaction)
 
+    STUDENT_INFO --> STUDENT_INFO : 📱 nfc_tap (same student = keepalive)
     STUDENT_INFO --> STUDENT_INFO : 📱 nfc_tap (different student)
-    STUDENT_INFO --> IDLE : ⏱️ inactivity timeout
+    STUDENT_INFO --> IDLE : ⏱️ inactivity timeout (no interaction)
 
     state IDLE {
         [*] --> LoopingIdleCampaign
@@ -100,6 +101,37 @@ stateDiagram-v2
 | `currentStudentUid` | NFC UID of the identified student (if any) |
 | `inactivityTimeoutMs` | How long before returning to IDLE |
 | `runtimeUpdatedAt` | Timestamp of last config update |
+| `lastNfcError` | Set to `"card_not_recognized"` when an unknown NFC card is tapped; cleared on next successful event |
+| `timeoutEndsAt` | Unix timestamp when inactivity timeout will fire; used by client for countdown warning |
+
+---
+
+## Inactivity Timeout Behavior
+
+The display returns to IDLE after a configured duration of **no real interaction** (gesture, NFC tap, scroll). Presence alone does not prevent timeout — only actual user actions reset the timer.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Timer-resetting events (real interactions):              │
+│    movement_detected, visitor_selected, nfc_tap,         │
+│    scroll_next, scroll_prev                              │
+│    → lastActivityAt = Date.now()                         │
+│    → scheduleInactivityTimer()  ← timer restarted        │
+│                                                          │
+│  Non-resetting events (keepalives):                      │
+│    presence_keepalive, nfc_keepalive                     │
+│    → acknowledged (status: "ok")                         │
+│    → timer NOT reset, state unchanged                    │
+│                                                          │
+│  No interaction for inactivityTimeoutMs:                 │
+│    → timeout toast appears at ≤ 5s remaining             │
+│    → returns to IDLE                                     │
+└──────────────────────────────────────────────────────────┘
+```
+
+### NFC Keepalive
+
+When a student taps the same NFC card while already viewing their STUDENT_INFO screen, the state machine treats it as a keepalive: the carousel position is preserved but the inactivity timer is **not** reset. This prevents the NFC reader's continuous polling from restarting the student's content or extending the session indefinitely.
 
 ---
 
@@ -128,6 +160,7 @@ flowchart LR
 | UI / Manual | `POST /events` | No | All except `movement_detected` |
 | Motion sensor | `POST /detector/movement` | `x-detector-token` | Always `movement_detected` |
 | NFC / Detector | `POST /detector/events` | `x-detector-token` | Filtered by allowed types |
+| Camera detector | `POST /detector/events` | `x-detector-token` | `presence_keepalive` (auto, every 3s) |
 
 ### Event Normalization
 
@@ -139,6 +172,7 @@ visitor_detected          →  visitor_selected
 nfc                       →  nfc_tap
 right_hand_move           →  scroll_next
 left_hand_move            →  scroll_prev
+presence_keepalive        →  presence_keepalive
 ```
 
 ---
@@ -178,6 +212,38 @@ sequenceDiagram
         SM->>Screen: Render student campaign
     end
 ```
+
+---
+
+## NFC Error Feedback
+
+When a student taps an unrecognized NFC card, the state machine sets `lastNfcError = "card_not_recognized"` and transitions back to MENU. The render service checks this flag and shows a warning banner:
+
+```
+┌──────────────────────────────────────────┐
+│ ⚠ Card not recognized                   │
+│   Please register at the front desk      │
+│   or try again.                          │
+└──────────────────────────────────────────┘
+```
+
+The error clears automatically on the next successful event (any event other than another failed NFC tap).
+
+---
+
+## Inactivity Timeout Warning
+
+When the player is in a non-IDLE state and the inactivity timeout is less than 5 seconds away, a countdown toast appears at the bottom of the screen:
+
+```
+┌────────────────────────────────┐
+│  Returning to home in 3s…     │
+└────────────────────────────────┘
+```
+
+This is driven by the `timeoutEndsAt` field in the state machine status. The client-side polling loop (1-second interval on `/current`) compares `timeoutEndsAt` against `Date.now()` to show or hide the toast.
+
+Note: Presence keepalive events continuously push `timeoutEndsAt` forward, so the countdown toast only appears once the person has actually left and the keepalive stops.
 
 ---
 

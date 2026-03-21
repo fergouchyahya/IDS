@@ -109,7 +109,7 @@
           <div class="overview-actions" onclick="event.stopPropagation()">
             <button class="overview-action" onclick='loadCampaignToEditor(${kindArg}, ${idArg})'>Edit</button>
             <button class="overview-action" onclick='duplicateCampaignFromOverview(${kindArg}, ${idArg})'>Duplicate</button>
-            <button class="overview-action primary" onclick='deployCampaignFromOverview(${kindArg}, ${idArg})'>Deploy</button>
+            <button class="overview-action primary" onclick='deployCampaignFromOverview(${kindArg}, ${idArg}, this)'>Deploy</button>
           </div>
         </article>
       `;

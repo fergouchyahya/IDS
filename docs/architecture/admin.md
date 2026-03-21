@@ -73,11 +73,13 @@ flowchart TD
 
 | Layer | Responsibility | Does NOT do |
 |-------|---------------|-------------|
-| **Router** | URL + method matching | Validate data, mutate state |
+| **Router** | URL + method matching, auth check on mutations | Validate data, mutate state |
+| **Auth Middleware** | Verify `Authorization: Bearer <key>` header | Business logic |
 | **Handlers** | Parse body, call service, map HTTP status | Business logic |
 | **Services** | Domain operations, orchestration | Direct disk I/O |
 | **Storage** | Validate, manage state, project runtime config | HTTP concerns |
 | **Repository** | Read/write JSON file, async batching | Business validation |
+| **StudentDb** | Read/write student profiles in SQLite | Business validation |
 
 ---
 
@@ -88,12 +90,15 @@ flowchart TD
     A[index.js<br/><i>Read config, validate port</i>] --> B[server.js<br/><i>Build all dependencies</i>]
 
     B --> C[FileRepository<br/><i>JSON persistence</i>]
+    B --> SDB[StudentDb<br/><i>SQLite persistence</i>]
     B --> D[createStorage<br/><i>Domain facade</i>]
     B --> E[buildServices<br/><i>Wire services</i>]
     B --> F[createAdminRouter<br/><i>Route table</i>]
 
     D --> C
+    D --> SDB
     E --> D
+    F --> AUTH[Auth Middleware<br/><i>API key check</i>]
     F --> G[Handlers]
     G --> E
 
@@ -104,7 +109,7 @@ flowchart TD
 
 ## Persistent State Model
 
-The admin state is a single JSON object persisted to disk:
+Admin state is split across two stores:
 
 ```mermaid
 classDiagram
@@ -115,7 +120,6 @@ classDiagram
         idleCampaigns : Campaign[]
         visitorCampaigns : Campaign[]
         students : Map~uid → Campaign~
-        studentProfiles : Map~uid → Profile~
         updatedAt : ISO timestamp
     }
 
@@ -141,14 +145,17 @@ classDiagram
         nextClassText : string?
     }
 
-    AdminState "1" --> "*" Campaign
+    AdminState "1" --> "*" Campaign : state.json
     Campaign "1" --> "*" CampaignItem
-    AdminState "1" --> "*" StudentProfile
+    StudentProfile "*" -- "SQLite" : students.db
+
+    note for AdminState "Persisted in state.json"
+    note for StudentProfile "Persisted in students.db (SQLite)"
 ```
 
 **Key distinction:**
-- `students` — manual student-to-campaign mappings (operator creates the campaign)
-- `studentProfiles` — profile data used to **generate** campaigns on demand
+- `students` (in `state.json`) — manual student-to-campaign mappings (operator creates the campaign)
+- `studentProfiles` (in `students.db`) — profile data used to **generate** campaigns on demand, stored in SQLite via `better-sqlite3`
 
 ---
 
@@ -231,24 +238,72 @@ Media URLs depend on `IDS_PUBLIC_ADMIN_URL` — if it points at the wrong hostna
 
 ---
 
+## API Key Authentication
+
+All mutation endpoints (POST, PUT, DELETE) require an API key via the `Authorization: Bearer <key>` header. Read-only endpoints (GET) do not require auth.
+
+```mermaid
+flowchart LR
+    REQ[Mutation Request] --> Check{Authorization header?}
+    Check -->|Missing or invalid| Deny["401 Unauthorized"]
+    Check -->|Valid Bearer token| Allow[Process request]
+```
+
+The key is set via the `IDS_ADMIN_API_KEY` environment variable. If the variable is empty, auth is disabled (development only — not recommended in production). The browser admin UI stores the key in `localStorage` and prompts the user on first visit or after a `401` response.
+
+---
+
+## Student Profile Storage (SQLite)
+
+Student profiles are stored in a **SQLite database** (`students.db`) via `better-sqlite3`, separate from the main JSON state file. On first boot, any legacy profiles in `state.json` are automatically migrated to SQLite.
+
+```mermaid
+flowchart LR
+    subgraph Persistence
+        JSON[(state.json<br/>campaigns, settings, active)]
+        SQLite[(students.db<br/>student profiles)]
+    end
+
+    Storage[Storage Facade] --> JSON
+    Storage --> SQLite
+```
+
+| Store | What it holds |
+|-------|--------------|
+| `state.json` | Campaigns, menu, active selections, settings, manual student mappings |
+| `students.db` | Student profiles (nfcUid, displayName, timetableImageUrl, nextClassText) |
+
+---
+
 ## Browser UI Structure
 
 ```
 admin/public/
 ├── index.html          HTML shell
-├── admin-ui.js         Main orchestration (large, being decomposed)
+├── admin-ui.js         Main orchestration
 ├── app.js              App initialization
 ├── styles.css          Styling
-├── components/         Extracted UI components
-│   ├── campaign-editor.js
-│   ├── campaign-list.js
-│   ├── student-manager.js
-│   └── media-uploader.js
-└── services/           Extracted browser-side services
-    ├── api-client.js
-    ├── state-manager.js
-    ├── validation.js
-    └── ...
+├── components/         UI components
+│   ├── overview.js     Campaign overview card grid
+│   ├── builder.js      Block editor rendering
+│   ├── inspector.js    Side panel (campaign details, active selections)
+│   └── blocks.js       Block type definitions
+└── services/           Browser-side services
+    ├── orchestrator.js  Composes handlers from all services
+    ├── actions.js       Async API-backed operations (save, publish, delete)
+    ├── http.js          API calls, HTML escape, status toasts, button loading states
+    ├── editor-state.js  Campaign loading, duplication, state transitions
+    ├── editor-view.js   DOM sync, form population, builder ↔ UI binding
+    ├── editor-controller.js  State + view coordination (select, rename, type change)
+    ├── block-ops.js     Block add/remove/move/duplicate/drag-drop
+    ├── render-helpers.js  Sidebar, inspector, block rendering delegation
+    ├── runtime-deps.js  Dependency builder for all service modules
+    ├── runtime-context.js  Runtime state (builder, sidebar query, filters)
+    ├── state-store.js   UI state persistence (localStorage)
+    ├── campaign-selectors.js  Card normalization for overview grid
+    ├── ui-events.js     DOM event binding (search, filters, type change)
+    ├── validation.js    Client-side campaign validation
+    └── legacy-bridge.js Global function registration for inline onclick handlers
 ```
 
 The UI is **vanilla JavaScript** — no framework, no build step. The server serves these files directly.
@@ -288,6 +343,7 @@ sequenceDiagram
 
 | Scenario | Response |
 |----------|----------|
+| Missing or invalid API key | `401 { error: "unauthorized" }` |
 | Invalid JSON body | `400 { error: "validation_failed", issues: [...] }` |
 | Missing campaign/student | `404 { error: "validation_failed", issues: ["not_found"] }` |
 | Invalid upload content-type | `400 { error: "validation_failed", issues: ["invalid_content_type"] }` |

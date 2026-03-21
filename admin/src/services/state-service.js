@@ -25,6 +25,7 @@ function createStateService({ storage, studentService }) {
     return {
       state: {
         ...state,
+        studentProfiles: storage.listStudentProfiles(),
         generatedStudentCampaigns: await studentService.listGeneratedCampaigns(),
       },
     };

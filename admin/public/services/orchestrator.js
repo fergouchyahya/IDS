@@ -83,8 +83,13 @@
       return modules.editorState.duplicateCampaignFromOverviewState(getEditorStateDeps(), type, id);
     }
 
-    async function deployCampaignFromOverview(type, id) {
-      return modules.editorController.deployCampaignFromOverviewState(getControllerDeps(), type, id);
+    async function deployCampaignFromOverview(type, id, btnEl) {
+      if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Deploying\u2026"; }
+      try {
+        return await modules.editorController.deployCampaignFromOverviewState(getControllerDeps(), type, id);
+      } finally {
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Deploy"; }
+      }
     }
 
     function renderBlocks() {
@@ -242,11 +247,13 @@
     }
 
     async function publishCampaign() {
-      return modules.actions.publishCampaignAction(getActionDeps());
+      return AdminHttp.withLoading("publishBtn", "Publishing\u2026", () =>
+        modules.actions.publishCampaignAction(getActionDeps()));
     }
 
     async function saveBuilderCampaign() {
-      return modules.actions.saveBuilderCampaignAction(getActionDeps());
+      return AdminHttp.withLoading("saveCampaignBtn", "Saving\u2026", () =>
+        modules.actions.saveBuilderCampaignAction(getActionDeps()));
     }
 
     async function deleteCampaignUI(campaignId) {

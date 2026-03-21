@@ -15,6 +15,7 @@ const { renderAdminPage } = require("./render-admin-page");
 const { createAdminRouter } = require("./router");
 const { FileRepository } = require("./storage/repository");
 const { createStorage } = require("./storage");
+const { createStudentDb } = require("./storage/student-db");
 const {
   ensureUploadDir,
   processUploadMultipart,
@@ -99,7 +100,15 @@ function createServer({ port = 8081, host = "127.0.0.1" } = {}) {
   const startedAt = Date.now();
 
   const repository = new FileRepository({ dataDir: DATA_DIR });
-  const storage = createStorage(repository);
+  const studentDb = createStudentDb(path.join(DATA_DIR, "students.db"));
+
+  // Migrate student profiles from state.json → SQLite on first run.
+  const initialState = repository.readStateSync();
+  if (Array.isArray(initialState.studentProfiles) && initialState.studentProfiles.length > 0) {
+    studentDb.migrateFromState(initialState.studentProfiles);
+  }
+
+  const storage = createStorage(repository, studentDb);
 
   const readJsonBody = createJsonBodyReader(storage);
   const readRawBody = createRawBodyReader(storage, MAX_UPLOAD_SIZE);

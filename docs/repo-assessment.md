@@ -16,19 +16,18 @@ The repo is in a good working shape for a student or prototype system:
 
 Current caveats:
 
-- One tracked file is modified in the worktree: `player/src/detector/client-script.js`
-- A meaningful part of the roadmap is still operational hardening, hardware integration, and storage migration
 - Admin remains the dominant code area, so most maintenance cost will land there
+- JSON-file persistence is acceptable for demo scale but would need migration for production
 
-### Snapshot
+### Snapshot (updated 2026-03-21)
 
 | Metric | Value |
 |--------|-------|
-| Total files | `114` |
-| Total lines | `15,554` |
-| JavaScript files | `77` |
-| JavaScript lines | `10,117` |
-| Documentation lines | `3,621` |
+| Total files | `119` |
+| Total lines | `17,152` |
+| JavaScript files | `78` |
+| JavaScript lines | `10,981` |
+| Documentation lines | `4,135` |
 | Test files | `10` |
 | Test lines | `971` |
 
@@ -58,13 +57,13 @@ These are not necessarily bad, but they are likely maintenance hotspots:
 
 | File | Lines | Why it matters |
 |------|-------|----------------|
-| `player/src/services/render-service.js` | `801` | Rendering logic is large and likely mixes layout, content shaping, and presentation concerns |
+| `player/src/services/render-service.js` | `~950` | Rendering logic is large and mixes layout, content shaping, and presentation concerns |
 | `admin/public/styles.css` | `899` | Single large stylesheet makes UI changes harder to localize |
 | `admin/public/services/orchestrator.js` | `379` | Central browser coordination code often becomes a change bottleneck |
 | `admin/src/storage/repository.js` | `374` | Persistence code is critical and should stay simple and heavily tested |
 | `admin/src/storage.js` | `368` | Storage facade size suggests growing domain complexity |
-| `player/src/services/state-machine.js` | `308` | Core runtime behavior; high leverage, high regression risk |
-| `player/src/detector/client-script.js` | `297` | Detector logic is still an active risk area per roadmap |
+| `player/src/services/state-machine.js` | `315` | Core runtime behavior; high leverage, high regression risk |
+| `player/src/detector/client-script.js` | `297` | Detector logic — MediaPipe hand gesture detection |
 
 ### Practical Quality Score
 
@@ -73,10 +72,10 @@ If you want a blunt summary:
 - Architecture quality: `8/10`
 - Documentation quality: `8/10`
 - Test depth: `6/10`
-- Operational maturity: `5/10`
+- Operational maturity: `7/10`
 - Long-term maintainability if left unchanged: `6/10`
 
-Overall repo health: `7/10`
+Overall repo health: `8/10`
 
 ---
 

@@ -162,7 +162,7 @@
    * @returns {Promise<void>}
    */
   async function deleteCampaignAction(deps, campaignId) {
-    if (!global.confirm(`Delete campaign ${campaignId}?`)) return;
+    if (!global.confirm(`Delete campaign "${campaignId}"?\n\nThis cannot be undone.`)) return;
     try {
       await deps.api(`/api/campaigns/${encodeURIComponent(campaignId)}`, { method: "DELETE" });
       await deps.refresh();
@@ -180,7 +180,7 @@
    * @returns {Promise<void>}
    */
   async function deleteStudentAction(deps, uid) {
-    if (!global.confirm(`Delete student ${uid}?`)) return;
+    if (!global.confirm(`Delete student "${uid}"?\n\nThis cannot be undone.`)) return;
     try {
       await deps.api(`/api/students/${encodeURIComponent(uid)}`, { method: "DELETE" });
       await deps.refresh();
