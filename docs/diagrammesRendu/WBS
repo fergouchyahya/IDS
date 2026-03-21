@@ -1,0 +1,62 @@
+```mermaid
+graph TD
+    ROOT[IDS Project] --> PM[1. Project Management]
+    PM --> CDC[1.1 Specifications - CdC]
+    PM --> PLAN[1.2 Planning & Gantt]
+
+    ROOT --> INFRA[2. Environment & Design]
+    INFRA --> GIT[2.1 Git Repo & Conventions]
+    INFRA --> JSON[2.2 JSON Schema & Validation]
+```
+
+```mermaid
+graph TD
+    ROOT[IDS Project] --> PM[1. Management]
+    PM --> CDC[1.1 Specs - CdC]
+    PM --> PLAN[1.2 Planning]
+
+    ROOT --> ENV[2. Environment]
+    ENV --> GIT[2.1 Git & Conv.]
+    ENV --> JSON[2.2 JSON Schema]
+
+    ROOT --> DEV[3. Development]
+    DEV --> FSM[3.1 State Machine]
+    FSM --> STATES[3.1.1 IDLE/INTER/PLAY]
+    FSM --> TIME[3.1.2 Timeouts]
+    
+    DEV --> VIS[3.2 Vision Module]
+    VIS --> MP[3.2.1 MediaPipe]
+    VIS --> GEST[3.2.2 Swipes]
+
+    DEV --> UI[3.3 Kiosk UI]
+    UI --> WS[3.3.1 WebSockets]
+    UI --> FULL[3.3.2 Full-screen]
+```
+
+```mermaid
+graph TD
+    ROOT[IDS Project] --> PM[1. Management]
+    PM --> CDC[1.1 Specs - CdC]
+
+    ROOT --> ENV[2. Env. & Design]
+    ENV --> JSON[2.2 JSON Schema]
+
+    ROOT --> DEV[3. Development]
+    DEV --> FSM[3.1 State Machine]
+    FSM --> STATES[3.1.1 FSM States]
+    
+    DEV --> VIS[3.2 Vision Module]
+    VIS --> MP[3.2.1 MP ~1m Fix]
+    
+    DEV --> UI[3.3 Kiosk UI]
+
+    ROOT --> HW[4. Hardware & RPi]
+    HW --> RPI[4.1 RPi 5 Opt.]
+    RPI --> CAM[4.1.1 Camera Fix]
+    RPI --> NFC[4.1.2 NFC Int.]
+
+    ROOT --> DEL[5. Deliverables]
+    DEL --> FLY[5.1 Flyer & Doc]
+    DEL --> POS[5.2 Poster & Oral]
+```
+   
