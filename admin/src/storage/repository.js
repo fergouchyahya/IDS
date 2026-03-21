@@ -309,6 +309,16 @@ class FileRepository extends AdminRepository {
   }
 
   /**
+   * Reads current cached state synchronously.
+   *
+   * @returns {object} Current state.
+   */
+  readStateSync() {
+    this.ensureStateLoaded();
+    return this.stateCache;
+  }
+
+  /**
    * Reads current cached state.
    *
    * @returns {Promise<object>} Current state.

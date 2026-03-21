@@ -1,5 +1,7 @@
 # IDS — Interactive Digital Signage
 
+[![CI](https://github.com/fergouchyahya/IDS/actions/workflows/ci.yml/badge.svg)](https://github.com/fergouchyahya/IDS/actions/workflows/ci.yml)
+
 > A smart signage platform that reacts to people. Movement wakes it up, NFC identifies them, and the right content appears — all managed from a browser.
 
 ```
@@ -62,7 +64,7 @@ flowchart LR
 3. The player service pulls that config and renders a full-screen display
 4. When someone walks by, the motion sensor wakes the screen to a menu
 5. An NFC tap identifies a student and shows their personalized content
-6. After inactivity, the screen returns to idle
+6. After a period of no interaction (no gesture or tap), the screen returns to idle
 
 ---
 
@@ -126,13 +128,14 @@ stateDiagram-v2
 
     MENU --> VISITOR_INFO : ✋ hand raised
     MENU --> STUDENT_INFO : 📱 NFC tap (known student)
-    MENU --> IDLE : ⏱️ inactivity timeout
+    MENU --> IDLE : ⏱️ no interaction → timeout
 
     VISITOR_INFO --> STUDENT_INFO : 📱 NFC tap (known student)
-    VISITOR_INFO --> IDLE : ⏱️ inactivity timeout
+    VISITOR_INFO --> IDLE : ⏱️ no interaction → timeout
 
+    STUDENT_INFO --> STUDENT_INFO : 📱 NFC tap (same student = keepalive)
     STUDENT_INFO --> STUDENT_INFO : 📱 NFC tap (different student)
-    STUDENT_INFO --> IDLE : ⏱️ inactivity timeout
+    STUDENT_INFO --> IDLE : ⏱️ no interaction → timeout
 
     note right of IDLE : Loops idle campaign content
     note right of MENU : Shows interactive menu
@@ -146,6 +149,7 @@ stateDiagram-v2
 | UI / Manual | `POST /events` | None |
 | Motion sensor | `POST /detector/movement` | Detector token |
 | NFC reader | `POST /detector/events` | Detector token |
+| Camera detector | `POST /detector/events` | Detector token (presence detection, does not reset timer) |
 
 ---
 
@@ -316,26 +320,34 @@ Copy `.env.example` and adjust as needed. Key variables:
 | `IDS_ADMIN_URL` | `http://127.0.0.1:8081` | Admin URL for player sync |
 | `IDS_ADMIN_DATA_DIR` | `admin/data` | Persistent storage directory |
 | `IDS_PUBLIC_ADMIN_URL` | Same as admin URL | Public URL for media references |
+| `IDS_ADMIN_API_KEY` | `admin` | API key for admin mutations (empty = auth disabled) |
+| `NFC_POLL_MS` | `800` | NFC reader polling interval (ms) |
+| `NFC_COOLDOWN_MS` | `3000` | Minimum time between same NFC card taps (ms) |
 | `LOG_LEVEL` | `info` | Logging verbosity |
 
 ---
 
 ## API Overview
 
+All admin mutation endpoints (POST/PUT/DELETE) require an API key via `Authorization: Bearer <key>`. GET endpoints are public. See [Admin API Reference](docs/api/admin.md) for details.
+
 ### Admin Endpoints
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/` | Serve admin UI |
-| `GET` | `/health` | Service health check |
-| `GET` | `/api/state` | Full admin state |
-| `GET` | `/runtime-config` | Player runtime projection |
-| `POST` | `/api/campaigns` | Create campaign |
-| `POST` | `/api/menu-campaign` | Set menu campaign |
-| `GET/POST` | `/api/students` | Student management |
-| `POST` | `/api/students/:uid/campaign` | Generated student campaign |
-| `POST` | `/api/media/upload` | Upload media file |
-| `GET` | `/media/:filename` | Serve uploaded media |
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/` | No | Serve admin UI |
+| `GET` | `/health` | No | Service health check |
+| `GET` | `/api/state` | No | Full admin state |
+| `GET` | `/runtime-config` | No | Player runtime projection |
+| `POST` | `/api/campaigns` | Yes | Create campaign |
+| `PUT` | `/api/campaigns/:id` | Yes | Update campaign |
+| `DELETE` | `/api/campaigns/:id` | Yes | Delete campaign |
+| `POST` | `/api/menu-campaign` | Yes | Set menu campaign |
+| `POST` | `/api/students` | Yes | Create/update student |
+| `GET` | `/api/students/:uid/campaign` | No | Generated student campaign |
+| `DELETE` | `/api/students/:uid` | Yes | Delete student |
+| `POST` | `/api/media/upload` | Yes | Upload media file |
+| `GET` | `/media/:filename` | No | Serve uploaded media |
 
 ### Player Endpoints
 
@@ -391,9 +403,11 @@ flowchart LR
 | Runtime | Node.js (no framework — raw `http` module) |
 | Language | JavaScript (CommonJS) |
 | Frontend | Vanilla JS, HTML, CSS (no build step) |
-| Persistence | JSON file with async write batching |
+| Persistence | JSON file (campaigns/settings) + SQLite via `better-sqlite3` (student profiles) |
 | Validation | AJV (JSON Schema) |
+| Auth | API key via `Authorization: Bearer` header on mutation endpoints |
 | Testing | Node built-in test runner (`--test`) |
+| CI | GitHub Actions (automated on push/PR) |
 | Deployment | systemd on Raspberry Pi |
 | Hardware | Raspberry Pi + PIR sensor + NFC reader + display |
 
@@ -428,8 +442,9 @@ All test suites pass in a normal local environment. Admin integration tests bind
 | [Shared Architecture](docs/architecture/shared.md) | Common utilities and contract |
 | [Admin API Reference](docs/api/admin.md) | Full admin endpoint documentation |
 | [Player API Reference](docs/api/player.md) | Full player endpoint documentation |
+| [Local Development Guide](docs/operations/local-development.md) | Run and test on your laptop |
 | [Deployment Guide](docs/operations/deployment-pi.md) | Raspberry Pi setup and operations |
+| [Demo Script](docs/demo-script.md) | Step-by-step live demo walkthrough |
 | [Testing Guide](docs/testing.md) | Test coverage and verification |
-| [Repo Assessment](docs/repo-assessment.md) | Repo health, code quality review, and size breakdown |
 | [Glossary](docs/glossary.md) | Project terminology |
 | [Status & Roadmap](docs/status.md) | Current state and next steps |

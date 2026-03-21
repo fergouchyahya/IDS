@@ -13,9 +13,9 @@ flowchart LR
     end
 
     subgraph Admin Service
-        AdminAPI[HTTP API]
+        AdminAPI[HTTP API + Auth]
         AdminUI[Browser Admin UI]
-        Storage[(JSON State + Uploads)]
+        Storage[(JSON State + SQLite + Uploads)]
     end
 
     subgraph Player Service
@@ -95,12 +95,16 @@ flowchart TD
     subgraph Admin Boot
         AI[index.js] --> AS[server.js]
         AS --> FR[FileRepository]
+        AS --> SDB[StudentDb - SQLite]
         AS --> ST[createStorage]
         AS --> SV[buildServices]
         AS --> AR[createAdminRouter]
+        AR --> AUTH[Auth Middleware]
         AR --> AH[Handlers]
         AH --> SV
-        SV --> ST --> FR
+        SV --> ST
+        ST --> FR
+        ST --> SDB
     end
 
     subgraph Player Boot
@@ -166,7 +170,7 @@ sequenceDiagram
     Admin-->>Player: Generated student campaign
     Player->>Screen: Show STUDENT_INFO
 
-    Note over Player: Inactivity timeout...
+    Note over Player: Inactivity timeout (no gesture/tap)...
     Player->>Screen: Return to IDLE
 ```
 
@@ -175,16 +179,18 @@ sequenceDiagram
 ## Core Architectural Rules
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│  Admin:   Router → Handler → Service → Storage → Repository │
-│  Player:  Router → Handler → Service / State Machine         │
-│  Shared:  Reusable code only — no runtime state ownership    │
-│                                                              │
-│  Admin persistence:  Async, repository-backed                │
-│  Player state:       In-memory only, not persisted           │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  Admin:   Router → Auth Middleware → Handler → Service → Storage  │
+│  Player:  Router → Handler → Service / State Machine               │
+│  Shared:  Reusable code only — no runtime state ownership          │
+│                                                                    │
+│  Admin persistence:  JSON file (campaigns) + SQLite (profiles)    │
+│  Admin auth:         API key via Authorization: Bearer header      │
+│  Player state:       In-memory only, not persisted                 │
+│  Player timeout:     Only real interactions reset inactivity timer  │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

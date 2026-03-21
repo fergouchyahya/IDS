@@ -29,7 +29,8 @@ function isDetectorAllowedEvent(eventType) {
     || normalizedType === "visitor_selected"
     || normalizedType === "scroll_next"
     || normalizedType === "scroll_prev"
-    || normalizedType === "nfc_tap";
+    || normalizedType === "nfc_tap"
+    || normalizedType === "presence_keepalive";
 }
 
 module.exports = {

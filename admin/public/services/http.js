@@ -63,7 +63,21 @@
    * @returns {Promise<object>} Parsed JSON response.
    */
   async function api(url, options = {}) {
+    const apiKey = localStorage.getItem("ids_api_key");
+    if (apiKey) {
+      options.headers = Object.assign({}, options.headers, {
+        Authorization: "Bearer " + apiKey,
+      });
+    }
+
     const res = await fetch(url, options);
+
+    if (res.status === 401) {
+      localStorage.removeItem("ids_api_key");
+      promptApiKey("API key rejected. Please enter a valid key.");
+      throw new Error("Unauthorized");
+    }
+
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
@@ -75,9 +89,59 @@
     return data;
   }
 
+  /**
+   * Prompts for an API key and stores it in localStorage.
+   *
+   * @param {string} [message] - Optional prompt message.
+   */
+  function promptApiKey(message) {
+    const key = prompt(message || "Enter admin API key:");
+    if (key) {
+      localStorage.setItem("ids_api_key", key.trim());
+    }
+  }
+
+  /**
+   * Returns true if an API key is stored.
+   *
+   * @returns {boolean}
+   */
+  function hasApiKey() {
+    return Boolean(localStorage.getItem("ids_api_key"));
+  }
+
+  /**
+   * Disables a button with loading text, restores after callback resolves.
+   *
+   * @param {string} btnId - Button element id.
+   * @param {string} loadingText - Text shown while loading.
+   * @param {function(): Promise} fn - Async action to run.
+   * @returns {Promise<*>} Result of fn.
+   */
+  async function withLoading(btnId, loadingText, fn) {
+    const btn = document.getElementById(btnId);
+    if (btn && btn.disabled) return;
+    const origText = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = loadingText;
+    }
+    try {
+      return await fn();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
+    }
+  }
+
   global.AdminHttp = {
     setStatus,
     escapeHtml,
     api,
+    promptApiKey,
+    hasApiKey,
+    withLoading,
   };
 }(window));

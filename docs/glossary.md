@@ -37,9 +37,9 @@ stateDiagram-v2
     IDLE --> MENU : movement
     MENU --> VISITOR_INFO : visitor selected
     MENU --> STUDENT_INFO : NFC tap
-    VISITOR_INFO --> IDLE : timeout
-    STUDENT_INFO --> IDLE : timeout
-    MENU --> IDLE : timeout
+    VISITOR_INFO --> IDLE : timeout (no interaction)
+    STUDENT_INFO --> IDLE : timeout (no interaction)
+    MENU --> IDLE : timeout (no interaction)
 ```
 
 | Term | Definition |
@@ -48,6 +48,10 @@ stateDiagram-v2
 | **Runtime Config** | The normalized data structure the player uses at runtime — includes active campaigns, settings, and student entries. Produced by admin's runtime mapper. |
 | **Detector Event** | An event from the detector-authenticated endpoints. Requires the boot-time detector token in the `x-detector-token` header. |
 | **NFC-Like Event** | An event such as `nfc_tap` that identifies a student by UID, potentially triggering the student info flow. |
+| **NFC Error Feedback** | When an unrecognized NFC card is tapped, the state machine sets `lastNfcError` and the player shows a "Card not recognized" banner on the menu screen. Clears automatically on the next successful event. |
+| **Timeout Warning** | A countdown toast shown when inactivity timeout is less than 5 seconds away (e.g., "Returning to home in 3s..."). Driven by the `timeoutEndsAt` field in the state machine status, polled by the client every 1 second. |
+| **Presence Keepalive** | An automatic event (`presence_keepalive`) sent by the browser detector every 3 seconds while someone is in front of the camera in a non-IDLE state. Acknowledged by the state machine but does **not** reset the inactivity timer — only real interactions (gestures, taps) reset it. |
+| **NFC Keepalive** | When the same NFC card is tapped again while already viewing that student's STUDENT_INFO, the state machine treats it as a keepalive — the carousel position is preserved but the inactivity timer is **not** reset. |
 
 ---
 
@@ -56,10 +60,12 @@ stateDiagram-v2
 | Term | Definition |
 |------|-----------|
 | **Router** | URL + method dispatch layer. Does not validate data or mutate state. |
+| **Auth Middleware** | Checks the `Authorization: Bearer <key>` header on mutation endpoints. Returns `401` if missing or invalid. Configured via `IDS_ADMIN_API_KEY`. |
 | **Handler** | HTTP concern layer — parses bodies, calls services, maps results to status codes. |
 | **Service** | Domain logic layer — thin APIs that keep handlers from talking directly to storage. |
 | **Storage Facade** | The admin domain layer that validates data, coordinates state changes, and delegates persistence to the repository. |
-| **Repository** | The persistence boundary. Currently implemented as `FileRepository` — reads/writes a JSON state file with async batch writes. |
+| **Repository** | The persistence boundary. `FileRepository` reads/writes a JSON state file with async batch writes. |
+| **StudentDb** | SQLite-backed persistence for student profiles, using `better-sqlite3`. Separate from the JSON state file. |
 | **Runtime Mapper** | Transforms the full admin state into the normalized runtime config consumed by the player. |
 
 ---

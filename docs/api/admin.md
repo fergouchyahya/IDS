@@ -48,8 +48,31 @@ flowchart LR
     end
 ```
 
+## Authentication
+
+All mutation endpoints (POST, PUT, DELETE) require API key authentication. Read-only endpoints (GET) are public.
+
+```
+Header:  Authorization: Bearer <api-key>
+```
+
+The API key is configured via the `IDS_ADMIN_API_KEY` environment variable. If the variable is empty or unset, authentication is disabled (development only).
+
+```mermaid
+flowchart LR
+    REQ[POST/PUT/DELETE request] --> Check{Authorization header?}
+    Check -->|Missing or wrong| Deny["401 { error: 'unauthorized' }"]
+    Check -->|Valid| Process[Route to handler]
+    GET[GET request] --> Process
+```
+
+The browser admin UI prompts for the key on first visit and stores it in `localStorage`. On a `401` response, it clears the stored key and re-prompts.
+
+---
+
 ## Contract Policy
 
+- Mutation endpoints require `Authorization: Bearer <key>` header
 - Validation errors return `{ error: "validation_failed", issues: [...] }`
 - Unknown routes return `404 { error: "not_found: /path" }`
 - Successful mutations return `{ state }` with the full updated admin state
