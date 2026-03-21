@@ -5,6 +5,11 @@
  * Usage:
  *   node nfc-reader.js [--player-url http://127.0.0.1:7070] [--poll-ms 800] [--cooldown-ms 3000]
  *
+ * Environment variables (used as fallbacks when CLI args are not provided):
+ *   PLAYER_PORT  — player port (builds URL as http://127.0.0.1:${PLAYER_PORT})
+ *   NFC_POLL_MS  — poll interval in ms (default 800)
+ *   NFC_COOLDOWN_MS — cooldown between same-tag reads in ms (default 3000)
+ *
  * Requires: libnfc-bin (nfc-list) installed.
  * The reader must be connected before starting this script.
  */
@@ -19,12 +24,48 @@ function argVal(flag, fallback) {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
 }
 
-const PLAYER_URL = argVal("--player-url", "http://127.0.0.1:7070");
-const POLL_MS = Number(argVal("--poll-ms", "800"));
-const COOLDOWN_MS = Number(argVal("--cooldown-ms", "3000"));
+const PLAYER_URL = argVal(
+  "--player-url",
+  process.env.PLAYER_PORT
+    ? `http://127.0.0.1:${process.env.PLAYER_PORT}`
+    : "http://127.0.0.1:7070",
+);
+const POLL_MS = Number(argVal("--poll-ms", process.env.NFC_POLL_MS || "800"));
+const COOLDOWN_MS = Number(argVal("--cooldown-ms", process.env.NFC_COOLDOWN_MS || "3000"));
+
+/* ── Structured logging ── */
+function log(level, msg, meta = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    service: "ids-nfc-reader",
+    msg,
+    ...(Object.keys(meta).length > 0 ? { meta } : {}),
+  };
+  const out = JSON.stringify(entry);
+  if (level === "error") {
+    process.stderr.write(out + "\n");
+  } else {
+    process.stdout.write(out + "\n");
+  }
+}
 
 let lastUid = "";
 let lastUidAt = 0;
+let pollTimer = null;
+
+/**
+ * Checks whether nfc-list is available on the system.
+ *
+ * @returns {Promise<boolean>}
+ */
+function checkNfcListInstalled() {
+  return new Promise((resolve) => {
+    execFile("which", ["nfc-list"], (err) => {
+      resolve(!err);
+    });
+  });
+}
 
 /**
  * Runs nfc-list and parses any tag UID from the output.
@@ -73,16 +114,16 @@ function sendNfcTap(uid) {
         res.on("end", () => {
           try {
             const parsed = JSON.parse(body);
-            console.log(`[nfc] player response: state=${parsed.state} action=${parsed.action}`);
+            log("info", "player_response", { state: parsed.state, action: parsed.action });
           } catch (_) {
-            console.log(`[nfc] player response: ${res.statusCode}`);
+            log("info", "player_response", { statusCode: res.statusCode });
           }
           resolve();
         });
       },
     );
     req.on("error", (e) => {
-      console.error(`[nfc] player unreachable: ${e.message}`);
+      log("error", "player_unreachable", { message: e.message });
       reject(e);
     });
     req.write(payload);
@@ -102,15 +143,35 @@ async function tick() {
     lastUid = uid;
     lastUidAt = now;
 
-    console.log(`[nfc] tag detected: ${uid}`);
+    log("info", "tag_detected", { uid });
     await sendNfcTap(uid);
   } catch (e) {
-    console.error(`[nfc] error: ${e.message}`);
+    log("error", "poll_error", { message: e.message });
   }
 }
 
-console.log(`[nfc] polling every ${POLL_MS}ms — player at ${PLAYER_URL} — cooldown ${COOLDOWN_MS}ms`);
-console.log("[nfc] place a tag on the reader...");
+/* ── Graceful shutdown ── */
+function shutdown(signal) {
+  log("info", "shutdown", { signal });
+  if (pollTimer) clearInterval(pollTimer);
+  process.exit(0);
+}
 
-setInterval(tick, POLL_MS);
-tick();
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+/* ── Main ── */
+(async () => {
+  const hasNfcList = await checkNfcListInstalled();
+  if (!hasNfcList) {
+    log("error", "nfc_list_not_found", {
+      message: "nfc-list is not installed. Install libnfc-bin: sudo apt install libnfc-bin",
+    });
+    process.exit(1);
+  }
+
+  log("info", "started", { playerUrl: PLAYER_URL, pollMs: POLL_MS, cooldownMs: COOLDOWN_MS });
+
+  pollTimer = setInterval(tick, POLL_MS);
+  tick();
+})();

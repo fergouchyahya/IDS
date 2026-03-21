@@ -16,17 +16,19 @@ const { buildDetectorClientScript } = require("../detector/client-script");
  */
 const PLAYER_PAGE_STYLES = `
     :root {
-      --bg-0: #070d18;
-      --bg-1: #0f1b2f;
+      --bg-0: #1a1f33;
+      --bg-1: #282d46;
       --panel: rgba(255, 255, 255, 0.08);
       --panel-strong: rgba(255, 255, 255, 0.12);
-      --text-primary: #f8fbff;
-      --text-secondary: #b9c7dd;
-      --border-soft: rgba(255, 255, 255, 0.18);
-      --accent-idle: #2dd4bf;
-      --accent-menu: #60a5fa;
-      --accent-info: #34d399;
-      --shadow-soft: 0 22px 60px rgba(0, 0, 0, 0.35);
+      --text-primary: #f0f1f6;
+      --text-secondary: #cacde0;
+      --border-soft: rgba(255, 255, 255, 0.15);
+      --accent-idle: #009cdd;
+      --accent-menu: #009cdd;
+      --accent-info: #00b8d4;
+      --polytech-primary: #282d46;
+      --polytech-secondary: #009cdd;
+      --shadow-soft: 0 22px 60px rgba(0, 0, 0, 0.4);
       --ease: 180ms ease;
     }
 
@@ -36,10 +38,15 @@ const PLAYER_PAGE_STYLES = `
       font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       color: var(--text-primary);
       background:
-        radial-gradient(1200px 650px at 0% 0%, rgba(96, 165, 250, 0.12), transparent 62%),
-        radial-gradient(1000px 550px at 100% 100%, rgba(45, 212, 191, 0.10), transparent 60%),
+        radial-gradient(1200px 650px at 0% 0%, rgba(0, 156, 221, 0.14), transparent 62%),
+        radial-gradient(1000px 550px at 100% 100%, rgba(0, 156, 221, 0.08), transparent 60%),
         linear-gradient(160deg, var(--bg-0), var(--bg-1));
       overflow-x: hidden;
+      opacity: 0;
+      transition: opacity 350ms ease;
+    }
+    body.visible {
+      opacity: 1;
     }
     body::after {
       content: "";
@@ -60,12 +67,43 @@ const PLAYER_PAGE_STYLES = `
     .head {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
+      align-items: center;
       gap: 14px;
-      padding: 20px 28px;
+      padding: 14px 28px;
       border-bottom: 1px solid var(--border-soft);
       backdrop-filter: blur(8px);
-      background: rgba(8, 14, 24, 0.45);
+      background: rgba(30, 35, 56, 0.65);
+    }
+
+    .head-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .head-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .head-title {
+      font-size: clamp(16px, 2.2vw, 22px);
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      line-height: 1.2;
+    }
+
+    .head-title small {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-top: 2px;
     }
 
     .state {
@@ -80,9 +118,15 @@ const PLAYER_PAGE_STYLES = `
       color: var(--text-secondary);
     }
 
-    .state-idle .state { color: var(--accent-idle); }
-    .state-menu .state { color: var(--accent-menu); }
-    .state-info .state { color: var(--accent-info); }
+    .head-debug {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: right;
+    }
+
+    .state-idle .state { color: var(--polytech-secondary); }
+    .state-menu .state { color: var(--polytech-secondary); }
+    .state-info .state { color: #00b8d4; }
 
     .viewport {
       padding: clamp(16px, 2.2vw, 28px);
@@ -149,16 +193,131 @@ const PLAYER_PAGE_STYLES = `
 
     .guidance-chip {
       position: absolute;
-      bottom: 16px;
+      bottom: 28px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 9px 14px;
+      padding: 12px 28px;
       border-radius: 999px;
-      border: 1px solid var(--border-soft);
-      background: rgba(6, 10, 16, 0.55);
-      color: #deebff;
-      font-size: 12px;
+      border: 1px solid rgba(0, 156, 221, 0.3);
+      background: rgba(0, 156, 221, 0.1);
+      color: #d0e7ff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
       z-index: 3;
+      animation: guidancePulse 2.5s ease-in-out infinite;
+    }
+
+    .guidance-chip svg {
+      vertical-align: -2px;
+      margin-right: 6px;
+    }
+
+    @keyframes guidancePulse {
+      0%, 100% { opacity: 0.85; box-shadow: 0 0 0 0 rgba(0, 156, 221, 0); }
+      50% { opacity: 1; box-shadow: 0 0 0 10px rgba(0, 156, 221, 0.08); }
+    }
+
+    /* ── Info state: student banner ── */
+    .student-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 20px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(0, 156, 221, 0.15), rgba(0, 156, 221, 0.05));
+      border: 1px solid rgba(0, 156, 221, 0.2);
+      margin-bottom: 18px;
+      z-index: 2;
+      position: relative;
+    }
+
+    .student-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--polytech-secondary), #006899);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .student-meta {
+      flex: 1;
+      text-align: left;
+    }
+
+    .student-meta strong {
+      display: block;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .student-meta span {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ── Progress dots ── */
+    .progress-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 16px;
+      position: relative;
+      z-index: 3;
+    }
+
+    .progress-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      transition: background 250ms ease, transform 250ms ease, box-shadow 250ms ease;
+    }
+
+    .progress-dot.active {
+      background: var(--polytech-secondary);
+      transform: scale(1.3);
+      box-shadow: 0 0 0 4px rgba(0, 156, 221, 0.15);
+    }
+
+    .progress-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-left: 8px;
+    }
+
+    /* ── Back to menu hint ── */
+    .back-hint {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 5;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(6, 10, 16, 0.5);
+      border: 1px solid var(--border-soft);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color var(--ease), border-color var(--ease);
+    }
+
+    .back-hint:hover {
+      color: var(--text-primary);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .back-hint svg {
+      vertical-align: -2px;
+      margin-right: 4px;
     }
 
     .menu-surface {
@@ -191,11 +350,29 @@ const PLAYER_PAGE_STYLES = `
     .choice-card {
       text-align: left;
       width: 100%;
-      border-radius: 16px;
+      border-radius: 18px;
       border: 1px solid var(--border-soft);
       background: linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
-      padding: 18px;
+      padding: 28px 24px;
       transition: transform var(--ease), box-shadow var(--ease), border-color var(--ease);
+    }
+
+    .choice-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      margin-bottom: 14px;
+    }
+
+    .visitor-card .choice-icon {
+      background: rgba(0, 184, 212, 0.12);
+    }
+
+    .nfc-card .choice-icon {
+      background: rgba(0, 156, 221, 0.12);
     }
 
     button.choice-card {
@@ -238,6 +415,40 @@ const PLAYER_PAGE_STYLES = `
       font-size: 14px;
     }
 
+    .nfc-pulse {
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      width: 64px;
+      height: 64px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .nfc-icon {
+      font-size: 28px;
+      z-index: 2;
+    }
+
+    .nfc-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 156, 221, 0.5);
+      animation: nfc-ripple 2s ease-out infinite;
+    }
+
+    .nfc-ring:nth-child(2) {
+      animation-delay: 1s;
+    }
+
+    @keyframes nfc-ripple {
+      0% { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+
     .nfc-row {
       margin-top: 14px;
       display: flex;
@@ -262,14 +473,15 @@ const PLAYER_PAGE_STYLES = `
     .nfc-row input:focus {
       outline: none;
       border-color: rgba(255, 255, 255, 0.42);
-      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+      box-shadow: 0 0 0 3px rgba(0, 156, 221, 0.25);
     }
 
     .nfc-submit, .control-btn {
-      padding: 10px 14px;
-      border-radius: 10px;
+      padding: 12px 20px;
+      border-radius: 12px;
       border: 1px solid transparent;
       font-weight: 650;
+      font-size: 15px;
       cursor: pointer;
       background: #d9e8ff;
       color: #0b2344;
@@ -282,12 +494,16 @@ const PLAYER_PAGE_STYLES = `
       box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }
 
+    .control-btn svg {
+      vertical-align: -2px;
+    }
+
     .control-rail {
-      margin-top: 14px;
+      margin-top: 18px;
       position: relative;
       z-index: 3;
       display: flex;
-      gap: 8px;
+      gap: 12px;
       justify-content: center;
       flex-wrap: wrap;
     }
@@ -305,11 +521,14 @@ const PLAYER_PAGE_STYLES = `
     }
 
     .foot {
-      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 28px;
       color: var(--text-secondary);
       border-top: 1px solid var(--border-soft);
       backdrop-filter: blur(8px);
-      background: rgba(8, 14, 24, 0.35);
+      background: rgba(30, 35, 56, 0.45);
       font-size: 12px;
     }
 
@@ -367,71 +586,97 @@ const PLAYER_PAGE_STYLES = `
 
     .movement-widget {
       position: fixed;
-      left: 14px;
-      bottom: 14px;
+      right: 20px;
+      bottom: 20px;
       z-index: 18;
-      width: min(260px, calc(100vw - 28px));
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.24);
-      background: rgba(5, 10, 18, 0.78);
-      backdrop-filter: blur(8px);
-      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.34);
-      padding: 10px;
+      width: min(320px, calc(100vw - 40px));
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(26, 31, 51, 0.88);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+      padding: 14px;
       overflow: hidden;
     }
 
     .movement-cam-wrap {
       position: relative;
+      border-radius: 10px;
+      overflow: hidden;
     }
 
     .movement-head {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #dbeafe;
-      margin-bottom: 8px;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+    }
+
+    .movement-head-label {
+      flex: 1;
+    }
+
+    .movement-head-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(100, 116, 139, 0.25);
+      color: var(--text-secondary);
+      transition: background var(--ease), color var(--ease);
+    }
+
+    .movement-head-badge.active {
+      background: rgba(0, 156, 221, 0.2);
+      color: var(--polytech-secondary);
     }
 
     .movement-dot {
-      width: 9px;
-      height: 9px;
+      width: 10px;
+      height: 10px;
       border-radius: 999px;
-      background: #64748b;
-      box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.2);
-      transition: background var(--ease), box-shadow var(--ease);
+      background: #475569;
+      box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.25);
+      transition: background 300ms ease, box-shadow 300ms ease;
+      flex-shrink: 0;
     }
 
     .movement-dot.active {
-      background: #22c55e;
-      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
+      background: var(--polytech-secondary);
+      box-shadow: 0 0 0 4px rgba(0, 156, 221, 0.2), 0 0 12px rgba(0, 156, 221, 0.3);
     }
 
     .movement-cam {
       width: 100%;
-      height: 130px;
+      height: 170px;
       object-fit: cover;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: #020617;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0c1120;
       transform: scaleX(-1);
     }
 
     .movement-toast {
       position: absolute;
-      left: 10px;
-      right: 10px;
-      bottom: 10px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: rgba(34, 197, 94, 0.18);
-      border: 1px solid rgba(34, 197, 94, 0.32);
-      color: #dcfce7;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(0, 156, 221, 0.18);
+      border: 1px solid rgba(0, 156, 221, 0.3);
+      color: #d0e7ff;
       font-size: 12px;
+      font-weight: 600;
       text-align: center;
       opacity: 0;
       transform: translateY(8px);
-      transition: opacity var(--ease), transform var(--ease);
+      transition: opacity 250ms ease, transform 250ms ease;
       pointer-events: none;
     }
 
@@ -472,10 +717,12 @@ const PLAYER_PAGE_STYLES = `
         align-items: stretch;
       }
       .movement-widget {
-        width: min(210px, calc(100vw - 24px));
+        width: min(260px, calc(100vw - 24px));
+        right: 12px;
+        bottom: 12px;
       }
       .movement-cam {
-        height: 102px;
+        height: 130px;
       }
     }
 
@@ -484,6 +731,121 @@ const PLAYER_PAGE_STYLES = `
         animation: none !important;
         transition: none !important;
       }
+    }
+
+    /* ── Error overlay ── */
+    .error-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      background: rgba(26, 31, 51, 0.92);
+      backdrop-filter: blur(12px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 400ms ease;
+    }
+    .error-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .error-box {
+      text-align: center;
+      max-width: 460px;
+      padding: 40px;
+    }
+    .error-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .error-box h2 {
+      margin: 0 0 10px 0;
+      font-size: 24px;
+      color: var(--text-primary);
+    }
+    .error-box p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .error-spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: var(--polytech-secondary);
+      border-radius: 50%;
+      animation: errorSpin 0.8s linear infinite;
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
+    @keyframes errorSpin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── NFC error banner ── */
+    .nfc-error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 12px;
+      padding: 14px 20px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: bannerSlideIn 350ms ease;
+    }
+    .nfc-error-banner .banner-icon {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .nfc-error-banner .banner-text {
+      font-size: 15px;
+      color: #fca5a5;
+      line-height: 1.4;
+    }
+    .nfc-error-banner .banner-text strong {
+      color: #fecaca;
+    }
+    @keyframes bannerSlideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Timeout warning toast ── */
+    .timeout-toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 40;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 350ms ease, transform 350ms ease;
+    }
+    .timeout-toast.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+    .timeout-toast .toast-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .timeout-toast .toast-text {
+      font-size: 14px;
+      color: #fcd34d;
+      white-space: nowrap;
     }
 `;
 
@@ -500,17 +862,35 @@ function getStateVisualClass(state) {
 }
 
 /**
- * Renders top header with current state and campaign info.
+ * User-friendly label for each state.
+ */
+const STATE_LABELS = {
+  [STATE.IDLE]: "Welcome",
+  [STATE.MENU]: "How can we help you?",
+  [STATE.VISITOR_INFO]: "Visitor Information",
+  [STATE.STUDENT_INFO]: "Student Portal",
+};
+
+/**
+ * Renders top header with branding and optional debug info.
  *
  * @param {object} status - State status payload.
+ * @param {boolean} forceDebug - Whether to show technical details.
  * @returns {string} HTML fragment.
  */
-function renderHead(status) {
-  const info = `${status.campaignName || "Unknown"} | item ${status.itemIndex + 1}`;
+function renderHead(status, forceDebug) {
+  const label = STATE_LABELS[status.state] || status.state;
+  const debugInfo = forceDebug
+    ? `<div class="head-debug">${escapeHtml(status.state)} | ${escapeHtml(status.campaignName || "n/a")} | item ${status.itemIndex + 1}</div>`
+    : "";
   return `
     <header class="head">
-      <div class="state">${escapeHtml(status.state)}</div>
-      <div class="sub">${escapeHtml(info)}</div>
+      <div class="head-brand">
+        <img class="head-logo" src="https://polytech.grenoble-inp.fr/uas/polytech/PROPRIETE_LOGO_TERTIAIRE/Grenoble+INP+-+Logo+RS+rond+-+Polytech+V2+%28300x300%29.png" alt="Polytech Grenoble" />
+        <div class="head-title">IDS<small>Polytech Grenoble</small></div>
+      </div>
+      <div class="state" data-state="${escapeHtml(status.state)}">${escapeHtml(label)}</div>
+      ${debugInfo}
     </header>
   `;
 }
@@ -525,26 +905,36 @@ function renderHead(status) {
 function renderMenuSurface(status, lines) {
   const prompt = lines[0] || "Choose your path";
   const helper = lines[1] || "Select Visitor or scan NFC";
+  const nfcErrorHtml = status.lastNfcError
+    ? `<div class="nfc-error-banner">
+        <span class="banner-icon">&#x26A0;</span>
+        <span class="banner-text"><strong>Card not recognized</strong> — please register at the front desk or try again.</span>
+      </div>`
+    : "";
   return `
     <section class="menu-surface">
+      ${nfcErrorHtml}
       <div class="menu-copy">
         <h2>${escapeHtml(prompt)}</h2>
         <p>${escapeHtml(helper)}</p>
       </div>
       <div class="menu-grid">
         <button class="choice-card visitor-card" onclick="sendEvent({type:'visitor_selected'})">
+          <div class="choice-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00b8d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
           <span class="choice-kicker">Visitor</span>
-          <span class="choice-title">Continue as visitor</span>
-          <span class="choice-sub">Open visitor information campaign</span>
+          <span class="choice-title">I'm visiting</span>
+          <span class="choice-sub">Browse campus info, programs, and more</span>
         </button>
         <div class="choice-card nfc-card">
-          <span class="choice-kicker">Student</span>
-          <span class="choice-title">Tap NFC card</span>
-          <span class="choice-sub">Use UID in simulation mode</span>
-          <div class="nfc-row">
-            <input id="uid" placeholder="Enter NFC UID" aria-label="NFC UID" />
-            <button class="nfc-submit" onclick="sendEvent({type:'nfc_tap', nfcUid: document.getElementById('uid').value})">Scan</button>
+          <div class="choice-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#009cdd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
           </div>
+          <span class="choice-kicker">Student</span>
+          <span class="choice-title">Tap your card</span>
+          <span class="choice-sub">Place your student card on the NFC reader</span>
+          <div class="nfc-pulse"><div class="nfc-ring"></div><div class="nfc-ring"></div><div class="nfc-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#009cdd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.32a7.43 7.43 0 0 1 0 7.36"/><path d="M9.46 6.21a11.76 11.76 0 0 1 0 11.58"/><path d="M12.91 4.1a15.91 15.91 0 0 1 .01 15.8"/><path d="M16.37 2a20.16 20.16 0 0 1 0 20"/></svg></div></div>
         </div>
       </div>
     </section>
@@ -598,37 +988,73 @@ function renderViewport(status, item) {
     `;
   }
 
-  const guidance = status.state === STATE.IDLE
-    ? `<div class="guidance-chip">Move to start</div>`
+  const isIdle = status.state === STATE.IDLE;
+  const isInfo = status.state === STATE.VISITOR_INFO || status.state === STATE.STUDENT_INFO;
+
+  const guidance = isIdle
+    ? `<div class="guidance-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Wave your hand to begin</div>`
     : "";
-  const controls = status.state === STATE.IDLE
+
+  const arrowLeft = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+  const arrowRight = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
+
+  const controls = isIdle
     ? ""
     : `
       <div class="control-rail">
-        <button class="control-btn" onclick="sendEvent({type:'scroll_prev'})">Previous</button>
-        <button class="control-btn" onclick="sendEvent({type:'scroll_next'})">Next</button>
+        <button class="control-btn" onclick="sendEvent({type:'scroll_prev'})">${arrowLeft} Previous</button>
+        <button class="control-btn" onclick="sendEvent({type:'scroll_next'})">Next ${arrowRight}</button>
       </div>
     `;
 
+  const progressDots = isInfo && status.itemTotal > 1
+    ? `<div class="progress-bar">${Array.from({ length: status.itemTotal }, (_, i) =>
+        `<span class="progress-dot${i === status.itemIndex ? " active" : ""}"></span>`
+      ).join("")}<span class="progress-label">${status.itemIndex + 1} / ${status.itemTotal}</span></div>`
+    : "";
+
+  const studentBanner = status.state === STATE.STUDENT_INFO && status.currentStudentName
+    ? `<div class="student-banner">
+        <div class="student-avatar">${escapeHtml(status.currentStudentName.charAt(0).toUpperCase())}</div>
+        <div class="student-meta">
+          <strong>${escapeHtml(status.currentStudentName)}</strong>
+          <span>Student Dashboard</span>
+        </div>
+      </div>`
+    : "";
+
+  const backArrow = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+  const backHint = isInfo
+    ? `<button class="back-hint" onclick="sendEvent({type:'movement_detected'})">${backArrow} Back</button>`
+    : "";
+
   return `
     <section class="viewport-inner">
+      ${backHint}
+      ${studentBanner}
       ${mediaHtml}
       ${guidance}
       ${controls}
+      ${progressDots}
     </section>
   `;
 }
 
 /**
- * Renders footer with timeout details.
+ * Renders footer with branding and optional debug info.
  *
  * @param {object} status - State status payload.
+ * @param {boolean} forceDebug - Whether to show technical details.
  * @returns {string} HTML fragment.
  */
-function renderFooter(status) {
+function renderFooter(status, forceDebug) {
+  const debugSpan = forceDebug
+    ? `<span style="margin-left:auto;">Timeout: ${Number(status.inactivityTimeoutMs)}ms</span>`
+    : "";
   return `
     <footer class="foot">
-      <span>Inactivity timeout: ${Number(status.inactivityTimeoutMs)}ms</span>
+      <span>Polytech Grenoble &mdash; Interactive Digital Signage</span>
+      ${debugSpan}
     </footer>
   `;
 }
@@ -640,7 +1066,7 @@ function renderFooter(status) {
  * @param {boolean} forceDebug - Whether panel is initially visible.
  * @returns {string} HTML fragment.
  */
-function renderDebugPanel(status, forceDebug) {
+function renderDebugPanel(status, forceDebug, detectorToken) {
   return `
     <aside id="debugPanel" class="debug-panel${forceDebug ? " visible" : ""}">
       <h3>Player Debug</h3>
@@ -652,6 +1078,16 @@ function renderDebugPanel(status, forceDebug) {
         <dt>Inactivity</dt><dd>${Number(status.inactivityTimeoutMs)}ms</dd>
         <dt>Updated At</dt><dd>${escapeHtml(status.runtimeUpdatedAt || "n/a")}</dd>
       </dl>
+      <h4 style="margin:12px 0 6px;color:var(--text-secondary);font-size:12px;">Simulate Events</h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="nfc-submit" onclick="fetch('/detector/events',{method:'POST',headers:{'content-type':'application/json','x-detector-token':'${escapeHtml(detectorToken)}'},body:JSON.stringify({type:'movement_detected',source:'debug'})}).then(()=>location.reload())">Movement</button>
+        <button class="nfc-submit" onclick="sendEvent({type:'visitor_selected'}).then?.(()=>location.reload())">Visitor</button>
+      </div>
+      <h4 style="margin:12px 0 6px;color:var(--text-secondary);font-size:12px;">Manual NFC</h4>
+      <div class="nfc-row">
+        <input id="uid" placeholder="Enter NFC UID" aria-label="NFC UID" />
+        <button class="nfc-submit" onclick="sendEvent({type:'nfc_tap', nfcUid: document.getElementById('uid').value})">Scan</button>
+      </div>
     </aside>
   `;
 }
@@ -669,12 +1105,17 @@ function renderDebugPanel(status, forceDebug) {
  */
 function buildMainClientScript({ status, item, itemType, durationSec, forceDebug }) {
   return `
+    function fadeOutAndReload() {
+      document.body.classList.remove('visible');
+      setTimeout(() => location.reload(), 350);
+    }
+
     function sendEvent(payload) {
       fetch('/events', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
-      }).then(() => location.reload());
+      }).then(() => fadeOutAndReload());
     }
 
     function scheduleIdleAutoScroll() {
@@ -717,15 +1158,45 @@ function buildMainClientScript({ status, item, itemType, durationSec, forceDebug
       });
     }
 
+    // Fade in on page load
+    requestAnimationFrame(() => document.body.classList.add('visible'));
+
     scheduleIdleAutoScroll();
     initDebugPanel();
 
+    let consecutiveErrors = 0;
+    const errorOverlay = document.getElementById('errorOverlay');
+    const timeoutToast = document.getElementById('timeoutToast');
+    const timeoutText = document.getElementById('timeoutText');
+    const TIMEOUT_WARNING_MS = 5000;
+
     setInterval(() => {
       fetch('/current').then((r) => r.json()).then((next) => {
-        if (next.state !== ${JSON.stringify(status.state)} || next.itemIndex !== ${JSON.stringify(status.itemIndex)}) {
-          location.reload();
+        if (consecutiveErrors > 0) {
+          consecutiveErrors = 0;
+          errorOverlay.classList.remove('visible');
         }
-      }).catch(() => {});
+        if (next.state !== ${JSON.stringify(status.state)} || next.itemIndex !== ${JSON.stringify(status.itemIndex)}) {
+          fadeOutAndReload();
+        }
+        if (next.timeoutEndsAt && next.state !== 'IDLE') {
+          const remaining = next.timeoutEndsAt - Date.now();
+          if (remaining <= TIMEOUT_WARNING_MS && remaining > 0) {
+            const secs = Math.ceil(remaining / 1000);
+            timeoutText.textContent = 'Returning to home in ' + secs + 's\u2026';
+            timeoutToast.classList.add('visible');
+          } else {
+            timeoutToast.classList.remove('visible');
+          }
+        } else {
+          timeoutToast.classList.remove('visible');
+        }
+      }).catch(() => {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 3) {
+          errorOverlay.classList.add('visible');
+        }
+      });
     }, 1000);
   `;
 }
@@ -769,6 +1240,9 @@ function renderUI(stateMachine, options = {}) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IDS Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <script type="module">
     import { FilesetResolver, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs';
     window.FilesetResolver = FilesetResolver;
@@ -779,22 +1253,34 @@ function renderUI(stateMachine, options = {}) {
 </head>
 <body class="player-body ${stateClass}">
   <div class="wrap">
-    ${renderHead(status)}
+    ${renderHead(status, forceDebug)}
     <main class="viewport">${renderViewport(status, item)}</main>
-    ${renderFooter(status)}
+    ${renderFooter(status, forceDebug)}
   </div>
   <aside class="movement-widget">
     <div class="movement-head">
       <span id="movementDot" class="movement-dot"></span>
-      <span id="movementStatus">Detector booting...</span>
+      <span class="movement-head-label">Gesture Detection</span>
+      <span id="movementBadge" class="movement-head-badge">Standby</span>
     </div>
     <div class="movement-cam-wrap">
       <video id="movementCam" class="movement-cam" autoplay muted playsinline></video>
-      <canvas id="handTrackerCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:8px;transform:scaleX(-1);"></canvas>
+      <canvas id="handTrackerCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:10px;transform:scaleX(-1);"></canvas>
     </div>
-    <div id="movementToast" class="movement-toast">Movement detected</div>
+    <div id="movementToast" class="movement-toast">&#x2728; Gesture detected</div>
   </aside>
-  ${renderDebugPanel(status, forceDebug)}
+  <div id="timeoutToast" class="timeout-toast">
+    <span class="toast-icon">&#x23F3;</span>
+    <span class="toast-text" id="timeoutText">Returning to home in 5s...</span>
+  </div>
+  <div id="errorOverlay" class="error-overlay">
+    <div class="error-box">
+      <div class="error-icon">&#x1F4E1;</div>
+      <h2>Connecting to server&hellip;</h2>
+      <p><span class="error-spinner"></span>The display will resume automatically once the admin service is reachable.</p>
+    </div>
+  </div>
+  ${renderDebugPanel(status, forceDebug, detectorToken)}
   <script>
 ${mainClientScript}
 ${detectorClientScript}

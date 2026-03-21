@@ -24,4 +24,11 @@ curl --fail --silent --show-error --max-time "$TIMEOUT" "${PLAYER_BASE_URL}/heal
 echo "[smoke] player current state"
 curl --fail --silent --show-error --max-time "$TIMEOUT" "${PLAYER_BASE_URL}/current" >/dev/null
 
+echo "[smoke] nfc service active"
+if systemctl is-active --quiet ids-nfc 2>/dev/null; then
+  echo "[smoke] ids-nfc service is running"
+else
+  echo "[smoke] WARNING: ids-nfc service is not running (optional — skip if no NFC reader attached)"
+fi
+
 echo "[smoke] all checks passed"

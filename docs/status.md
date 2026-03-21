@@ -6,108 +6,87 @@
 
 ## Current State
 
-The core system is functional:
+The system is **stage-ready** and deployed on Raspberry Pi:
 
-- Admin and Player services are running with the full layered architecture
-- `router -> handler -> service -> storage -> repository` pipeline is in place for Admin
-- `router -> handler -> service/state-machine` pipeline is in place for Player
-- Admin persistence is async and repository-backed through `FileRepository`
-- Browser admin UI has been partially decomposed into `services/` and `components/`
-- All test suites pass in a normal local environment
-- Raspberry Pi deployment structure exists with systemd units and environment templates
-- Documentation set covers architecture, API, deployment, and testing
+- Admin and Player services run as systemd units with auto-restart
+- Full layered architecture: `router -> handler -> service -> storage -> repository`
+- Player state machine drives display: IDLE -> MENU -> VISITOR_INFO / STUDENT_INFO -> IDLE
+- NFC reader runs as a dedicated systemd service (`ids-nfc.service`)
+- Camera-based hand gesture detection via MediaPipe (movement triggers IDLE -> MENU)
+- Browser admin UI for campaign/student/media management
+- API key authentication protects all mutation endpoints
+- SQLite-backed student profile storage (migrated from JSON)
+- NFC error feedback ("Card not recognized" banner) and inactivity timeout warning toast
+- Presence keepalive: display stays active while someone is in front of the camera
+- NFC keepalive: same-card re-tap resets timer without restarting carousel
+- GitHub Actions CI runs all tests on push/PR to main
+- Delete confirmation dialogs and button loading states in admin UI
+- Polytech Grenoble branding and professional demo data
+- All test suites pass (`make test-all`, `make verify-all`)
+- Raspberry Pi deployment with systemd, env templates, and smoke checks
 
 ---
 
-## Next Steps
+## Completed Phases
 
-### Phase 1 — Deployment Hardening
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 0 | Core architecture (admin + player services) | Done |
+| Phase 1 | Admin persistence and browser UI | Done |
+| Phase 2 | Player state machine and server-side rendering | Done |
+| Phase 3 | Shared contract, config schema, validation | Done |
+| Phase 4 | Raspberry Pi deployment (systemd, env, smoke checks) | Done |
+| Phase 5 | Admin-to-Player sync (runtime config push) | Done |
+| Phase 6 | Camera & motion detection (MediaPipe hand gestures) | Done |
+| Phase 7 | NFC integration (libnfc reader as systemd service) | Done |
+| Phase 8 | Stage-ready polish (branding, UX, demo data) | Done |
+| Phase 9 | API key auth middleware for admin mutations | Done |
+| Phase 10 | SQLite for student profiles (better-sqlite3) | Done |
+| Phase 11 | GitHub Actions CI pipeline | Done |
+| Phase 12 | NFC error feedback + inactivity timeout warning | Done |
+| Phase 13 | Delete confirmation + loading states in admin UI | Done |
+| Phase 14 | Presence keepalive + NFC keepalive (stay active while present) | Done |
 
-**Goal:** Reliable, reproducible deployment to the Raspberry Pi target.
+---
 
-| Task | Details | Status |
-|------|---------|--------|
-| Automate deployment script | Create a single `deploy.sh` that syncs code, installs deps, restarts services | To Do |
-| Healthcheck integration | Wire `smoke-check.sh` into systemd `ExecStartPost` or a watchdog timer | To Do |
-| Auto-restart on failure | Configure systemd `Restart=on-failure` with backoff for both services | To Do |
-| Environment validation | Fail fast at boot if required env vars are missing or malformed | To Do |
-| Log rotation | Set up `logrotate` or journald limits for `/var/log/ids` | To Do |
-| Network resilience | Handle player startup when admin is temporarily unreachable | To Do |
+## Remaining Work
 
-### Phase 2 — Camera & Motion Detection
-
-**Goal:** Fix the camera logic and make motion detection reliable.
-
-| Task | Details | Status |
-|------|---------|--------|
-| Camera initialization | Fix camera startup sequence — handle device busy, permissions, fallback | To Do |
-| PIR sensor integration | Wire physical PIR sensor GPIO events to `/detector/movement` endpoint | To Do |
-| Camera-based motion | Implement frame-diff or background-subtraction for software motion detection | To Do |
-| Sensitivity tuning | Add configurable threshold and cooldown period via `IDS_DETECTOR_CONFIG` | To Do |
-| False positive filtering | Debounce rapid triggers, ignore lighting changes, add minimum motion area | To Do |
-| Detector health reporting | Expose detector status in `/health` response for monitoring | To Do |
-
-### Phase 3 — NFC Integration & Testing
-
-**Goal:** Hardware NFC working end-to-end with real student cards.
+### Operational Hardening
 
 | Task | Details | Status |
 |------|---------|--------|
-| NFC reader driver | Connect physical NFC reader (e.g. PN532/RC522) via SPI/I2C on the Pi | To Do |
-| UID extraction | Read raw NFC UID from card tap and forward to player events endpoint | To Do |
-| Student lookup flow | Verify full flow: tap -> player -> admin sync -> student campaign -> render | To Do |
-| Unknown card handling | Define UX for unregistered cards — show message, log UID for later registration | To Do |
-| Multi-tap resilience | Handle rapid successive taps, same-card re-tap, and reader timeout gracefully | To Do |
-| End-to-end test | Full test with real NFC cards on the Pi: tap -> display student info | To Do |
+| Automated deploy script | Single `deploy.sh` that syncs code, installs deps, restarts services | To Do |
+| Healthcheck integration | Wire smoke-check into systemd watchdog | To Do |
+| Environment validation | Fail fast at boot if required env vars are missing | To Do |
+| Log rotation | Set up journald limits for service logs | To Do |
 
-### Phase 4 — Motion Detection Fine-Tuning
-
-**Goal:** Production-quality motion detection with minimal false positives.
+### Future Improvements
 
 | Task | Details | Status |
 |------|---------|--------|
-| Threshold calibration | Test and document optimal sensitivity for the target Pi environment | To Do |
-| Zone masking | Allow defining active zones in the frame to ignore irrelevant movement areas | To Do |
-| Time-based profiles | Different sensitivity during day vs. night or high-traffic vs. quiet periods | To Do |
-| Performance profiling | Measure CPU/memory impact of motion detection on the Pi | To Do |
-| Logging & metrics | Log detection events with timestamps for analysis and tuning | To Do |
-
-### Phase 5 — SQL Persistence
-
-**Goal:** Replace file-backed JSON storage with a proper database.
-
-| Task | Details | Status |
-|------|---------|--------|
-| Database selection | Choose SQLite (embedded) or PostgreSQL (if network DB is needed) | To Do |
-| Schema design | Design tables for campaigns, items, students, profiles, settings, media refs | To Do |
-| Repository implementation | Create `SqlRepository` implementing the existing repository interface | To Do |
-| Migration tooling | Script to migrate existing JSON state file to the new database | To Do |
-| Transaction support | Ensure atomic writes for multi-entity operations (campaign + items) | To Do |
-| Query optimization | Index frequently accessed fields (student UID, campaign ID, active flags) | To Do |
-| Integration testing | Run existing test suites against the SQL backend | To Do |
+| HTTPS / TLS | Secure admin endpoints for network exposure | Deferred |
+| Multi-display | Multiple players with different configs | Deferred |
+| Admin login page | Replace API key prompt with a login form | Deferred |
 
 ---
 
 ## Deferred Work
 
-These items are planned but not yet scheduled into a phase:
-
 | Item | Notes |
 |------|-------|
-| **Project flyer** | Design a visual flyer presenting the project — for later |
-| **Final documentation** | Comprehensive project documentation for submission — for later |
-| Admin UI decomposition | Continue breaking `admin-ui.js` into smaller modules |
-| CI/CD pipeline | GitHub Actions for automated testing and deployment |
-| HTTPS / auth | Secure admin endpoints for production network exposure |
-| Multi-display support | Allow multiple players with different configs |
+| **Project flyer** | Visual flyer for project presentation — for later |
+| **Final documentation** | Comprehensive project report for submission — for later |
+| Admin UI decomposition | Continue breaking browser-side modules into smaller files |
 
 ---
 
 ## Verification Baseline
 
-- Admin tests: **passing**
-- Player tests: **passing**
-- Shared tests: **passing**
+- Admin tests: **passing** (20 tests)
+- Player tests: **passing** (5 tests)
+- Shared tests: **passing** (9 tests)
+- Schema validation: **passing** (`make validate`)
+- CI: GitHub Actions on push/PR to main/master
 - Note: admin integration tests require `127.0.0.1` socket binding — restricted sandboxes may fail with `listen EPERM`
 
 ---

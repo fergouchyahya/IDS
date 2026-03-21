@@ -1,117 +1,156 @@
 {
-  "settings": {
-    "inactivityTimeoutMs": 15000
-  },
-  "idleCampaign": {
-    "campaignId": "idle-welcome",
-    "campaignName": "Idle Welcome",
-    "campaignPriority": 10,
-    "items": [
-      {
-        "contentId": "idle-1",
-        "type": "TEXT",
-        "data": "Welcome to IDS — Interactive Digital Signage",
-        "order": 1,
-        "durationSec": 120
-      },
-      {
-        "contentId": "idle-2",
-        "type": "TEXT",
-        "data": "Step closer to interact",
-        "order": 2,
-        "durationSec": 120
-      }
-    ]
-  },
-  "menuCampaign": {
-    "campaignId": "menu-choices",
-    "campaignName": "Interaction Menu",
-    "campaignPriority": 20,
-    "items": [
-      {
-        "contentId": "menu-1",
-        "type": "TEXT",
-        "data": "Raise your hand to browse as a visitor",
-        "order": 1,
-        "durationSec": 60
-      },
-      {
-        "contentId": "menu-2",
-        "type": "TEXT",
-        "data": "Tap your NFC card for personalized content",
-        "order": 2,
-        "durationSec": 60
-      }
-    ]
-  },
-  "visitorCampaign": {
-    "campaignId": "info-visitor",
-    "campaignName": "Visitor Info",
-    "campaignPriority": 30,
-    "items": [
-      {
-        "contentId": "visitor-1",
-        "type": "TEXT",
-        "data": "Welcome, visitor! Here is our school info.",
-        "order": 1,
-        "durationSec": 30
-      },
-      {
-        "contentId": "visitor-2",
-        "type": "TEXT",
-        "data": "Swipe right for more, swipe left to go back.",
-        "order": 2,
-        "durationSec": 30
-      },
-      {
-        "contentId": "visitor-3",
-        "type": "TEXT",
-        "data": "Visit us at reception for a campus tour!",
-        "order": 3,
-        "durationSec": 30
-      }
-    ]
-  },
-  "students": [
+  "$comment": "NFC demo config for Polytech Grenoble — showcases idle slideshow with campus imagery, visitor tour, and a student dashboard linked to a real NFC card.",
+  "campaigns": [
     {
-      "nfcUid": "04295202c66780",
-      "name": "Fergyah",
-      "campaign": {
-        "campaignId": "student-fergyah",
-        "campaignName": "Fergyah's Dashboard",
-        "campaignPriority": 50,
-        "items": [
-          {
-            "contentId": "fergyah-1",
-            "type": "TEXT",
-            "data": "Welcome back, Fergyah!",
-            "order": 1,
-            "durationSec": 30
-          },
-          {
-            "contentId": "fergyah-2",
-            "type": "TEXT",
-            "data": "Next class: Project S8 — Room 204 at 10:00",
-            "order": 2,
-            "durationSec": 30
-          },
-          {
-            "contentId": "fergyah-3",
-            "type": "TEXT",
-            "data": "Upcoming deadline: Final presentation — March 28",
-            "order": 3,
-            "durationSec": 30
-          },
-          {
-            "contentId": "fergyah-4",
-            "type": "TEXT",
-            "data": "Campus event: Hackathon this Saturday!",
-            "order": 4,
-            "durationSec": 30
-          }
-        ]
-      }
+      "campaignId": "idle-welcome",
+      "campaignName": "Polytech Grenoble Welcome",
+      "campaignPriority": 10,
+      "generatedAt": "2026-03-20T10:00:00Z",
+      "items": [
+        {
+          "contentId": "idle-hero",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-2022-ecole2_1701091600347-jpg",
+          "order": 1,
+          "durationSec": 8
+        },
+        {
+          "contentId": "idle-welcome",
+          "type": "TEXT",
+          "data": "Welcome to Polytech Grenoble\nEngineering school of Grenoble INP — Université Grenoble Alpes",
+          "order": 2,
+          "durationSec": 8
+        },
+        {
+          "contentId": "idle-formations",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-2022-formations_1700220871703-jpg",
+          "order": 3,
+          "durationSec": 8
+        },
+        {
+          "contentId": "idle-specialties",
+          "type": "TEXT",
+          "data": "13 Engineering Specialties\nFrom Computer Science to Geotechnics, Materials, and Health Technologies",
+          "order": 4,
+          "durationSec": 8
+        },
+        {
+          "contentId": "idle-campus-life",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-2022-vie-etudiante2_1700221086753-jpg",
+          "order": 5,
+          "durationSec": 8
+        },
+        {
+          "contentId": "idle-life",
+          "type": "TEXT",
+          "data": "Student Life at Polytech\nClubs, events, and a vibrant campus in the heart of the French Alps",
+          "order": 6,
+          "durationSec": 8
+        }
+      ]
+    },
+    {
+      "campaignId": "menu-choices",
+      "campaignName": "Main Menu",
+      "campaignPriority": 20,
+      "generatedAt": "2026-03-20T10:00:00Z",
+      "items": [
+        {
+          "contentId": "menu-1",
+          "type": "TEXT",
+          "data": "How can we help you today?\nChoose Visitor or tap your student card",
+          "order": 1,
+          "durationSec": 60
+        }
+      ]
+    },
+    {
+      "campaignId": "info-visitor",
+      "campaignName": "Visitor Tour",
+      "campaignPriority": 30,
+      "generatedAt": "2026-03-20T10:00:00Z",
+      "items": [
+        {
+          "contentId": "visitor-welcome",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-grenoble-admissions_1701779421421-jpg",
+          "order": 1,
+          "durationSec": 10
+        },
+        {
+          "contentId": "visitor-about",
+          "type": "TEXT",
+          "data": "About Polytech Grenoble\nFounded in 2002, Polytech Grenoble is one of the leading public engineering schools in France. Part of the Polytech network and Grenoble INP, we train over 1,600 students across 13 specialties.",
+          "order": 2,
+          "durationSec": 15
+        },
+        {
+          "contentId": "visitor-international",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-grenoble-international2_1701691534758-jpg",
+          "order": 3,
+          "durationSec": 10
+        },
+        {
+          "contentId": "visitor-programs",
+          "type": "TEXT",
+          "data": "Our Programs\nComputer Science (RICM) · Embedded Systems (IESE) · Health Technologies (TIS) · Geotechnics · Materials · Industrial Electronics · Risk Prevention · and more",
+          "order": 4,
+          "durationSec": 15
+        },
+        {
+          "contentId": "visitor-research",
+          "type": "IMAGE",
+          "data": "https://polytech.grenoble-inp.fr/medias/photo/polytech-grenoble-recherche2_1701960856897-jpg",
+          "order": 5,
+          "durationSec": 10
+        },
+        {
+          "contentId": "visitor-contact",
+          "type": "TEXT",
+          "data": "Visit Us\nPolytech Grenoble — 681 rue de la Passerelle, 38400 Saint-Martin-d'Hères\nReception is open Monday–Friday, 8:00–17:00",
+          "order": 6,
+          "durationSec": 15
+        }
+      ]
+    },
+    {
+      "campaignId": "info-nfc",
+      "campaignName": "Fergyah — Student Dashboard",
+      "campaignPriority": 50,
+      "generatedAt": "2026-03-20T10:00:00Z",
+      "items": [
+        {
+          "contentId": "fergyah-welcome",
+          "type": "TEXT",
+          "data": "Welcome back, Fergyah\nINFO4 — Computer Science Department",
+          "order": 1,
+          "durationSec": 10
+        },
+        {
+          "contentId": "fergyah-schedule",
+          "type": "TEXT",
+          "data": "Today's Schedule\n09:00 — Projet S8 · Room C209\n13:30 — Middleware & SOA · Amphi E\n15:45 — Cloud Computing · Room B112",
+          "order": 2,
+          "durationSec": 12
+        },
+        {
+          "contentId": "fergyah-deadlines",
+          "type": "TEXT",
+          "data": "Upcoming Deadlines\nMar 28 — S8 Project Final Presentation\nApr 02 — Cloud Computing Report\nApr 10 — Middleware Lab Submission",
+          "order": 3,
+          "durationSec": 12
+        },
+        {
+          "contentId": "fergyah-events",
+          "type": "TEXT",
+          "data": "Campus Events\nMar 25 — Tech Talk: AI in Industry · Amphi Weil, 18:00\nApr 05 — Spring Hackathon · Polytech Hall\nApr 12 — Career Fair — 30+ companies on campus",
+          "order": 4,
+          "durationSec": 12
+        }
+      ]
     }
-  ],
-  "updatedAt": "2026-03-20T12:00:00Z"
+  ]
 }

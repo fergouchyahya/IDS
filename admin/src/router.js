@@ -8,6 +8,7 @@
  */
 
 const { json } = require("../../shared/utils/http-helpers");
+const { checkAuth } = require("./middleware/auth");
 const { handleRoot, handleAdminUiScript, handlePublicAsset } = require("./handlers/ui");
 const { handleHealth } = require("./handlers/health");
 const { handleApiState, handleRuntimeConfigProjection } = require("./handlers/state");
@@ -69,39 +70,50 @@ function createAdminRouter(deps) {
       return handleGetMedia(req, res, url, deps);
     }
 
+    // --- Mutation routes: require API key auth ---
+
     if (req.method === "POST" && url.pathname === "/api/media/upload") {
+      if (!checkAuth(req, res)) return;
       return handleMediaUpload(req, res, url, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/campaigns") {
+      if (!checkAuth(req, res)) return;
       return handleCreateCampaign(req, res, deps);
     }
 
     if (req.method === "PUT" && url.pathname.startsWith("/api/campaigns/")) {
+      if (!checkAuth(req, res)) return;
       return handleUpdateCampaign(req, res, url, deps);
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/campaigns/")) {
+      if (!checkAuth(req, res)) return;
       return handleDeleteCampaign(req, res, url, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/active") {
+      if (!checkAuth(req, res)) return;
       return handleSetActive(req, res, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/settings") {
+      if (!checkAuth(req, res)) return;
       return handleSetSettings(req, res, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/menu-campaign") {
+      if (!checkAuth(req, res)) return;
       return handleSetMenuCampaign(req, res, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/students") {
+      if (!checkAuth(req, res)) return;
       return handleUpsertStudent(req, res, deps);
     }
 
     if (req.method === "POST" && url.pathname === "/api/students/import") {
+      if (!checkAuth(req, res)) return;
       return handleImportStudents(req, res, deps);
     }
 
@@ -110,6 +122,7 @@ function createAdminRouter(deps) {
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/students/")) {
+      if (!checkAuth(req, res)) return;
       return handleDeleteStudent(req, res, url, deps);
     }
 

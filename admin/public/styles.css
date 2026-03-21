@@ -445,6 +445,12 @@
       box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     }
 
+    .btn:disabled, .btn[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
     .btn-secondary {
       background: var(--bg-primary);
       color: var(--text-primary);
@@ -454,6 +460,40 @@
     .btn-secondary:hover {
       background: var(--bg-secondary);
       border-color: var(--text-secondary);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-primary);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .sync-indicator {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--bg-primary);
+      color: var(--text-tertiary);
+      transition: background 300ms ease, color 300ms ease;
+    }
+
+    .sync-indicator.synced {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .sync-indicator.offline {
+      background: #fef2f2;
+      color: #991b1b;
     }
 
     .canvas-header-bottom {

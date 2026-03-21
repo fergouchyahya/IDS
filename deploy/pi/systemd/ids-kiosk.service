@@ -1,0 +1,38 @@
+[Unit]
+Description=IDS Kiosk — Chromium fullscreen on Pi display
+Wants=graphical-session.target
+After=graphical-session.target ids-player.service
+Requires=ids-player.service
+
+[Service]
+Type=simple
+User=ids
+Group=ids
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/ids/.Xauthority
+EnvironmentFile=/etc/ids/ids.env
+
+# Disable screen blanking / screensaver
+ExecStartPre=/usr/bin/xset -display :0 s off
+ExecStartPre=/usr/bin/xset -display :0 -dpms
+ExecStartPre=/usr/bin/xset -display :0 s noblank
+
+# Launch Chromium in kiosk mode
+ExecStart=/usr/bin/chromium-browser \
+    --kiosk \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --disable-translate \
+    --no-first-run \
+    --incognito \
+    --cursor-timeout=3 \
+    http://127.0.0.1:${PLAYER_PORT}
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+SyslogIdentifier=ids-kiosk
+
+[Install]
+WantedBy=graphical-session.target

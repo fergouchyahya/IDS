@@ -1,0 +1,35 @@
+[Unit]
+Description=IDS NFC Reader
+Wants=network-online.target
+After=network-online.target ids-player.service
+Requires=ids-player.service
+
+[Service]
+Type=simple
+User=ids
+Group=ids
+WorkingDirectory=/opt/ids
+EnvironmentFile=/etc/ids/ids.env
+ExecStart=/usr/bin/node /opt/ids/player/src/detector/nfc-reader.js \
+  --player-url http://127.0.0.1:${PLAYER_PORT} \
+  --poll-ms ${NFC_POLL_MS} \
+  --cooldown-ms ${NFC_COOLDOWN_MS}
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+TimeoutStopSec=10
+SyslogIdentifier=ids-nfc
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/ids
+LogsDirectory=ids
+
+# NFC reader needs access to USB devices
+SupplementaryGroups=plugdev
+
+[Install]
+WantedBy=multi-user.target

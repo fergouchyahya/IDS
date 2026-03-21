@@ -22,8 +22,7 @@ const {
   normalizeStudentProfilePayload,
 } = require("./storage/validators");
 const {
-  getGeneratedStudentCampaignByUid: mapGeneratedStudentCampaignByUid,
-  listGeneratedStudentCampaigns: mapGeneratedStudentCampaigns,
+  buildGeneratedStudentCampaign,
   toRuntimeConfig,
 } = require("./storage/runtime-mapper");
 
@@ -33,7 +32,7 @@ const {
  * @param {import('./storage/admin-repository').AdminRepository} repository - Repository instance.
  * @returns {object} Async storage API.
  */
-function createStorage(repository) {
+function createStorage(repository, studentDb) {
   /**
    * Reads current persisted state.
    *
@@ -200,13 +199,12 @@ function createStorage(repository) {
   }
 
   /**
-   * Imports student profile list and replaces stored profiles.
+   * Imports student profile list into SQLite, replacing all existing profiles.
    *
    * @param {object} payload - Student profile import payload.
-   * @returns {Promise<object>} Updated state.
+   * @returns {Promise<object>} State augmented with studentProfiles from DB.
    */
   async function importStudentProfiles(payload) {
-    const state = await repository.readState();
     const inputStudents = Array.isArray(payload?.students) ? payload.students : null;
     if (!inputStudents) {
       throw new ValidationError([issue("students", "students must be an array", "invalid_type")]);
@@ -236,29 +234,65 @@ function createStorage(repository) {
     });
 
     throwIfIssues(issues);
-    state.studentProfiles = normalized;
-    return await repository.writeState(state);
+    studentDb.importProfiles(normalized);
+
+    const state = await repository.readState();
+    return { ...state, studentProfiles: studentDb.listAll() };
   }
 
   /**
-   * Returns generated student campaign payload by UID.
+   * Returns generated student campaign payload by UID from SQLite.
    *
    * @param {string} nfcUid - Student UID.
    * @returns {Promise<object>} Generated student campaign payload.
    */
   async function getGeneratedStudentCampaignByUid(nfcUid) {
-    const state = await repository.readState();
-    return mapGeneratedStudentCampaignByUid(state, nfcUid);
+    const uid = String(nfcUid || "").trim();
+    if (!uid) {
+      throw new ValidationError([issue("nfcUid", "nfcUid is required", "required")]);
+    }
+
+    const profile = studentDb.getByUid(uid);
+    if (!profile) {
+      throw new ValidationError([issue("nfcUid", "Student profile not found", "not_found")]);
+    }
+
+    return {
+      nfcUid: profile.nfcUid,
+      name: profile.displayName,
+      campaign: buildGeneratedStudentCampaign(profile),
+    };
   }
 
   /**
-   * Lists all generated student campaigns.
+   * Lists all generated student campaigns from SQLite profiles.
    *
    * @returns {Promise<Array<object>>} Generated student campaigns.
    */
   async function listGeneratedStudentCampaigns() {
-    const state = await repository.readState();
-    return mapGeneratedStudentCampaigns(state);
+    return studentDb.listAll().map((profile) => ({
+      nfcUid: profile.nfcUid,
+      name: profile.displayName,
+      campaign: buildGeneratedStudentCampaign(profile),
+    }));
+  }
+
+  /**
+   * Returns all student profiles from SQLite.
+   *
+   * @returns {Array<object>} Profile list.
+   */
+  function listStudentProfiles() {
+    return studentDb.listAll();
+  }
+
+  /**
+   * Returns student profile count from SQLite.
+   *
+   * @returns {number} Profile count.
+   */
+  function getStudentProfileCount() {
+    return studentDb.count();
   }
 
   /**
@@ -356,6 +390,8 @@ function createStorage(repository) {
     importStudentProfiles,
     getGeneratedStudentCampaignByUid,
     listGeneratedStudentCampaigns,
+    listStudentProfiles,
+    getStudentProfileCount,
     toRuntimeConfig,
     normalizeAndValidateItems,
     getStorageHealth,

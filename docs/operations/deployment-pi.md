@@ -13,6 +13,7 @@ flowchart TD
         subgraph "systemd"
             AdminSvc[ids-admin.service]
             PlayerSvc[ids-player.service]
+            NfcSvc[ids-nfc.service]
         end
 
         subgraph "File System"
@@ -35,7 +36,8 @@ flowchart TD
         PlayerSvc --> HDMI
         PlayerSvc -.->|depends on| AdminSvc
         PIR --> PlayerSvc
-        NFC --> PlayerSvc
+        NFC --> NfcSvc
+        NfcSvc -.->|POST /events| PlayerSvc
         CAM --> PlayerSvc
     end
 
@@ -78,8 +80,11 @@ Laptop browser  -->  SSH tunnel  -->  Pi admin (port 8081)  -->  Pi player (port
 | Path | What goes there | Owner |
 |------|-----------------|-------|
 | `/opt/ids` | Application code (copied from laptop) | `ids:ids` |
-| `/etc/ids/ids.env` | Environment variables | `root:root` |
+| `/etc/ids/ids.env` | Environment variables (includes API key) | `root:root` |
 | `/var/lib/ids/admin` | Saved state + uploaded media (survives updates) | `ids:ids` |
+| `/var/lib/ids/admin/state.json` | Campaign, menu, and settings data | `ids:ids` |
+| `/var/lib/ids/admin/students.db` | Student profiles (SQLite database) | `ids:ids` |
+| `/var/lib/ids/admin/uploads/` | Uploaded media files | `ids:ids` |
 | `/var/log/ids` | Service logs | `ids:ids` |
 
 ---
@@ -332,13 +337,27 @@ sudo chown root:root /etc/ids/ids.env
 sudo chmod 640 /etc/ids/ids.env
 ```
 
+Now set a real API key (don't use the default `admin` in production):
+
+```bash
+sudo nano /etc/ids/ids.env
+```
+
+Find the `IDS_ADMIN_API_KEY` line and change it to a strong, unique value:
+
+```
+IDS_ADMIN_API_KEY=your-secret-production-key-here
+```
+
+Save and exit (`Ctrl+O`, `Ctrl+X`).
+
 **Verify:**
 
 ```bash
 sudo cat /etc/ids/ids.env
 ```
 
-You should see variables like `ADMIN_HOST=127.0.0.1`, `ADMIN_PORT=8081`, etc.
+You should see variables like `ADMIN_HOST=127.0.0.1`, `ADMIN_PORT=8081`, `IDS_ADMIN_API_KEY=your-secret-...`, etc.
 
 ---
 
@@ -372,15 +391,42 @@ Both should show installed packages (not empty).
 
 ---
 
-### Step 10 — Install and Enable systemd Services
+### Step 10 — Install NFC Reader (Optional)
+
+**Where:** on the Pi.
+
+If you have an NFC reader (e.g. ACR122U), install `libnfc`:
+
+```bash
+sudo apt install -y libnfc-bin
+```
+
+**Verify:**
+
+```bash
+nfc-list
+```
+
+If a reader is connected, it should show the device. If not connected, it will say "No NFC device found" — that's fine, the service will retry.
+
+Add the `ids` user to the `plugdev` group so it can access the USB reader:
+
+```bash
+sudo usermod -aG plugdev ids
+```
+
+---
+
+### Step 11 — Install and Enable systemd Services
 
 **Where:** on the Pi.
 
 ```bash
 sudo cp /opt/ids/deploy/pi/systemd/ids-admin.service /etc/systemd/system/
 sudo cp /opt/ids/deploy/pi/systemd/ids-player.service /etc/systemd/system/
+sudo cp /opt/ids/deploy/pi/systemd/ids-nfc.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable ids-admin.service ids-player.service
+sudo systemctl enable ids-admin.service ids-player.service ids-nfc.service
 ```
 
 **Verify:**
@@ -388,47 +434,51 @@ sudo systemctl enable ids-admin.service ids-player.service
 ```bash
 sudo systemctl is-enabled ids-admin.service
 sudo systemctl is-enabled ids-player.service
+sudo systemctl is-enabled ids-nfc.service
 ```
 
-Both should say `enabled`.
+All should say `enabled`. (The NFC service will start but log a warning if no reader is attached.)
 
 ---
 
-### Step 11 — Start the Services
+### Step 12 — Start the Services
 
 **Where:** on the Pi.
 
-Start admin first (player depends on it):
+Start admin first (player and NFC depend on it):
 
 ```bash
 sudo systemctl start ids-admin.service
 ```
 
-Wait 3 seconds, then start the player:
+Wait 3 seconds, then start the player and NFC reader:
 
 ```bash
 sudo systemctl start ids-player.service
+sudo systemctl start ids-nfc.service
 ```
 
-**Verify both are running:**
+**Verify all are running:**
 
 ```bash
 sudo systemctl status ids-admin.service --no-pager
 sudo systemctl status ids-player.service --no-pager
+sudo systemctl status ids-nfc.service --no-pager
 ```
 
-Both should show **`active (running)`** in green.
+All should show **`active (running)`** in green. (NFC may show a warning if no reader is attached — that's OK.)
 
-If either shows `failed`, check the logs:
+If any shows `failed`, check the logs:
 
 ```bash
 journalctl -u ids-admin.service -n 50 --no-pager
 journalctl -u ids-player.service -n 50 --no-pager
+journalctl -u ids-nfc.service -n 50 --no-pager
 ```
 
 ---
 
-### Step 12 — Run the Smoke Check
+### Step 13 — Run the Smoke Check
 
 **Where:** on the Pi.
 
@@ -446,6 +496,7 @@ You should see:
 [smoke] admin static asset
 [smoke] player health
 [smoke] player current state
+[smoke] ids-nfc service is running       (or WARNING if no reader attached)
 [smoke] all checks passed
 ```
 
@@ -459,7 +510,7 @@ SMOKE_TIMEOUT=15 sudo -u ids bash ./deploy/pi/smoke-check.sh
 
 ---
 
-### Step 13 — Access Admin from Your Laptop
+### Step 14 — Access Admin from Your Laptop
 
 **Where:** on your laptop.
 
@@ -487,9 +538,10 @@ You should see the IDS admin interface.
 ## You're Done! Setup Complete.
 
 The Pi will now:
-- Auto-start both services on boot
+- Auto-start all three services on boot (admin, player, NFC reader)
 - Auto-restart them if they crash
 - Show the player display on the connected HDMI screen
+- Read NFC cards when a reader is attached
 
 ---
 
@@ -512,7 +564,7 @@ rsync -av --delete --exclude '.git' --exclude 'node_modules' ./ admin@10.153.57.
 
 ```bash
 # Stop
-sudo systemctl stop ids-player.service ids-admin.service
+sudo systemctl stop ids-nfc.service ids-player.service ids-admin.service
 
 # Replace code
 sudo rm -rf /opt/ids/*
@@ -530,6 +582,7 @@ sudo chown -R ids:ids /opt/ids
 # Start
 sudo systemctl start ids-admin.service
 sudo systemctl start ids-player.service
+sudo systemctl start ids-nfc.service
 ```
 
 **3. Verify it works:**
@@ -537,6 +590,7 @@ sudo systemctl start ids-player.service
 ```bash
 sudo systemctl status ids-admin.service --no-pager
 sudo systemctl status ids-player.service --no-pager
+sudo systemctl status ids-nfc.service --no-pager
 cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
 ```
 
@@ -551,7 +605,7 @@ That's it. Your data (campaigns, uploads) in `/var/lib/ids/admin` is untouched �
 | Create `ids` user | Already exists |
 | Create directories | Already exist |
 | Install env file | Already at `/etc/ids/ids.env` (unless you changed `deploy/pi/env/ids.env`) |
-| Install systemd units | Already at `/etc/systemd/system/` (unless you changed the `.service` files) |
+| Install systemd units | Already at `/etc/systemd/system/` (unless you changed the `.service` files). Remember to also copy `ids-nfc.service` if it changed. |
 | Set up SSH keys | Already done |
 
 ### If you also changed the .service or .env files
@@ -581,8 +635,13 @@ The environment file is at `/etc/ids/ids.env` on the Pi. Here is what each varia
 | `IDS_ADMIN_DATA_DIR` | `/var/lib/ids/admin` | Where state and uploaded files are saved. |
 | `IDS_CONFIG` | Path to JSON file | Player startup configuration file. |
 | `IDS_DETECTOR_CONFIG` | _(empty)_ | Optional JSON for motion detection tuning. |
+| `NFC_POLL_MS` | `800` | How often the NFC reader polls for cards (milliseconds). |
+| `NFC_COOLDOWN_MS` | `3000` | Minimum time between accepting the same card tap. |
+| `IDS_ADMIN_API_KEY` | _(must be set)_ | API key required for all admin mutation endpoints. The browser admin UI prompts for this key on first visit. **Use a strong, unique value in production.** |
+| `NODE_ENV` | `production` | Node environment (`production` on Pi, `development` locally). |
 
-**Critical rule:** `IDS_PUBLIC_ADMIN_URL` must match the URL the player can actually reach. On the Pi, both services run locally, so `http://127.0.0.1:8081` is correct. If you change this to something wrong, uploaded media will not display.
+**Critical rules:**
+- `IDS_PUBLIC_ADMIN_URL` must match the URL the player can actually reach. On the Pi, both services run locally, so `http://127.0.0.1:8081` is correct. If you change this to something wrong, uploaded media will not display.
 
 To edit the env file:
 
@@ -654,7 +713,19 @@ flowchart LR
     Unit --> Restart["Restart: on-failure"]
 ```
 
-The player depends on admin — systemd ensures admin starts first. If admin goes down, systemd stops the player too.
+### ids-nfc.service
+
+```mermaid
+flowchart LR
+    Unit[ids-nfc.service] --> Node["node /opt/ids/player/src/detector/nfc-reader.js<br/>--player-url, --poll-ms, --cooldown-ms"]
+    Unit --> Requires["Requires: ids-player.service"]
+    Unit --> EnvFile["/etc/ids/ids.env"]
+    Unit --> User["User: ids"]
+    Unit --> Groups["SupplementaryGroups: plugdev"]
+    Unit --> Restart["Restart: always"]
+```
+
+The dependency chain is: **admin -> player -> NFC reader**. systemd ensures they start in order and stops dependents if a dependency goes down.
 
 ---
 
@@ -673,6 +744,7 @@ sudo -u ids bash ./deploy/pi/smoke-check.sh
 | 4 | Admin | `/services/runtime-deps.js` | UI static files are served |
 | 5 | Player | `/health` | Player process is alive |
 | 6 | Player | `/current` | State machine is responding |
+| 7 | NFC | systemd status | NFC reader service is active (warning if no reader attached) |
 
 ---
 
@@ -696,7 +768,7 @@ rsync -av --delete \
 
 ```bash
 # Stop services first
-sudo systemctl stop ids-player.service ids-admin.service
+sudo systemctl stop ids-nfc.service ids-player.service ids-admin.service
 
 # Replace code (keeps your data in /var/lib/ids safe)
 sudo rm -rf /opt/ids/*
@@ -719,10 +791,12 @@ sudo systemctl daemon-reload
 # Start services again
 sudo systemctl start ids-admin.service
 sudo systemctl start ids-player.service
+sudo systemctl start ids-nfc.service
 
 # Verify
 sudo systemctl status ids-admin.service --no-pager
 sudo systemctl status ids-player.service --no-pager
+sudo systemctl status ids-nfc.service --no-pager
 cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
 ```
 
@@ -731,7 +805,7 @@ cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
 **Where:** on the Pi.
 
 ```bash
-sudo systemctl restart ids-admin.service ids-player.service
+sudo systemctl restart ids-admin.service ids-player.service ids-nfc.service
 ```
 
 ### Update Only the Environment File
@@ -741,7 +815,7 @@ sudo systemctl restart ids-admin.service ids-player.service
 ```bash
 sudo nano /etc/ids/ids.env
 # make your changes, save with Ctrl+O, exit with Ctrl+X
-sudo systemctl restart ids-admin.service ids-player.service
+sudo systemctl restart ids-admin.service ids-player.service ids-nfc.service
 ```
 
 ### Check That Services Are Only Listening Locally
@@ -802,7 +876,7 @@ IDS_PUBLIC_ADMIN_URL=http://10.153.57.101:8081
 Then restart:
 
 ```bash
-sudo systemctl restart ids-admin.service ids-player.service
+sudo systemctl restart ids-admin.service ids-player.service ids-nfc.service
 ```
 
 Now you can open `http://10.153.57.101:8081` directly in your laptop browser — no SSH tunnel needed.
@@ -840,9 +914,10 @@ journalctl -u ids-admin.service -f
 If a service crashes 5 times in 60 seconds, systemd stops trying. Reset and try again:
 
 ```bash
-sudo systemctl reset-failed ids-admin.service ids-player.service
+sudo systemctl reset-failed ids-admin.service ids-player.service ids-nfc.service
 sudo systemctl start ids-admin.service
 sudo systemctl start ids-player.service
+sudo systemctl start ids-nfc.service
 ```
 
 Then read the logs to find out why it crashed.
@@ -852,6 +927,7 @@ Then read the logs to find out why it crashed.
 ```bash
 systemctl show ids-admin.service -p NRestarts
 systemctl show ids-player.service -p NRestarts
+systemctl show ids-nfc.service -p NRestarts
 ```
 
 ### Common Problems and Fixes
@@ -862,6 +938,7 @@ systemctl show ids-player.service -p NRestarts
 | Images/videos don't show in the player | `IDS_PUBLIC_ADMIN_URL` is wrong | Edit `/etc/ids/ids.env`, set `IDS_PUBLIC_ADMIN_URL=http://127.0.0.1:8081`, restart services |
 | Player won't start | Admin service isn't running yet | Run `sudo systemctl start ids-admin.service` first, wait 3 seconds, then start player |
 | "Permission denied" errors in logs | Wrong file ownership | Run `sudo chown -R ids:ids /opt/ids /var/lib/ids /var/log/ids` |
+| NFC tap not recognized | NFC service not running or no reader attached | `sudo systemctl status ids-nfc.service --no-pager` and `journalctl -u ids-nfc.service -n 50 --no-pager` |
 | `node: command not found` | Node.js not installed | Go back to [Step 5](#step-5--install-nodejs-20) |
 | `npm install` fails with network errors | Pi has no internet | Check `ping google.com` — fix DNS or network first |
 | smoke-check.sh says "permission denied" | Script not executable or wrong user | Run with `sudo -u ids bash ./deploy/pi/smoke-check.sh` |
@@ -892,22 +969,24 @@ rsync -av --delete --exclude '.git' --exclude 'node_modules' ./ admin@10.153.57.
 # Check service status
 sudo systemctl status ids-admin.service --no-pager
 sudo systemctl status ids-player.service --no-pager
+sudo systemctl status ids-nfc.service --no-pager
 
-# Restart both services
-sudo systemctl restart ids-admin.service ids-player.service
+# Restart all services
+sudo systemctl restart ids-admin.service ids-player.service ids-nfc.service
 
 # Read logs
 journalctl -u ids-admin.service -n 100 --no-pager
 journalctl -u ids-player.service -n 100 --no-pager
+journalctl -u ids-nfc.service -n 100 --no-pager
 
 # Run smoke check
 cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
 
 # Apply code update after rsync
-sudo systemctl stop ids-player.service ids-admin.service
+sudo systemctl stop ids-nfc.service ids-player.service ids-admin.service
 sudo rm -rf /opt/ids/* && sudo cp -a /tmp/ids-copy/. /opt/ids/ && sudo chown -R ids:ids /opt/ids && rm -rf /tmp/ids-copy
 cd /opt/ids && npm --prefix admin install && npm --prefix player install && npm --prefix shared/contract install && sudo chown -R ids:ids /opt/ids
-sudo systemctl start ids-admin.service && sudo systemctl start ids-player.service
+sudo systemctl start ids-admin.service && sudo systemctl start ids-player.service && sudo systemctl start ids-nfc.service
 
 # Back up data
 sudo cp -a /var/lib/ids/admin /var/lib/ids/admin.backup.$(date +%Y%m%d%H%M%S)
@@ -919,10 +998,52 @@ sudo systemctl restart ids-admin.service ids-player.service
 
 ---
 
+## Testing on the Pi
+
+After deploying, verify the full system works end-to-end:
+
+### Automated Checks
+
+```bash
+# Run the smoke check (tests all service endpoints)
+cd /opt/ids && sudo -u ids bash ./deploy/pi/smoke-check.sh
+
+# Run the test suite on the Pi (optional — primarily for CI, but works here too)
+cd /opt/ids && make test-all
+```
+
+### Manual End-to-End Test
+
+1. Open the player display (on Pi HDMI or via `http://127.0.0.1:7070` in Chromium)
+2. Verify IDLE state shows welcome content
+3. Trigger movement (wave hand, or use debug mode: `http://127.0.0.1:7070?debug=1`)
+4. Verify MENU state shows visitor/student cards
+5. Test visitor flow: click "I'm visiting" → verify visitor content appears
+6. Wait for inactivity timeout → verify return to IDLE
+7. If NFC reader is connected: tap a registered student card → verify student content
+8. If NFC reader is connected: tap an unregistered card → verify "Card not recognized" banner
+9. Open admin UI via SSH tunnel: `ssh -L 8081:127.0.0.1:8081 admin@<pi-ip>` → open `http://127.0.0.1:8081`
+10. Verify admin UI loads, prompts for API key, and shows campaigns
+
+### Checklist
+
+| Check | Command / Action | Expected |
+|-------|-----------------|----------|
+| Admin alive | `curl http://127.0.0.1:8081/health` | `{"status":"ok",...}` |
+| Player alive | `curl http://127.0.0.1:7070/health` | `{"status":"ok",...}` |
+| Player state | `curl http://127.0.0.1:7070/current` | `{"state":"IDLE",...}` |
+| NFC service | `sudo systemctl status ids-nfc.service` | `active (running)` |
+| Ports local only | `ss -ltnp | grep ':8081'` | Shows `127.0.0.1` |
+| API key works | `curl -X POST http://127.0.0.1:8081/api/campaigns -H 'Authorization: Bearer wrong'` | `401` |
+| Smoke check | `sudo -u ids bash ./deploy/pi/smoke-check.sh` | All checks passed |
+
+---
+
 ## Related Docs
 
 | Document | Description |
 |----------|-------------|
+| [Local Development Guide](local-development.md) | Run and test on your laptop |
 | [Architecture Overview](../architecture/overview.md) | System design |
 | [Status & Roadmap](../status.md) | Deployment hardening plans |
 | [Testing Guide](../testing.md) | Verification commands |
