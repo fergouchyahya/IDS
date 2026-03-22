@@ -45,51 +45,54 @@ flowchart TB
 ## Realized Architecture : 
 ```mermaid
 flowchart TD
-    %% Définition des styles (couleurs et bordures)
+    %% Style Definitions
     classDef hardware fill:#f5f5f5,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5;
     classDef frontend fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
     classDef backend fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
     classDef storage fill:#fff3e0,stroke:#e65100,stroke-width:2px;
     classDef user fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
 
-    %% Acteurs et Périphériques externes
-    Admin(("Administrateur<br>")):::user
-    Cam[/"Caméra USB<br>"\]:::hardware
-    NFCReader[/"Lecteur NFC<br>"\]:::hardware
+    %% External Actors and Peripherals
+    Admin(("Administrator<br>")):::user
+    Cam[/"USB Camera<br>"\]:::hardware
+    NFCReader[/"NFC Reader<br>"\]:::hardware
 
-    %% Système Principal
-    subgraph RPI5 ["Raspberry Pi 5 "]
+    %% Main System
+    subgraph RPI5 ["Raspberry Pi 5"]
         
         subgraph Backend ["Backend"]
-            AdminAPI["API Admin (Création Campagne)"]:::backend
-            NFCService["Logique NFC"]:::backend
-            SM["Machine à États<br>(IDLE, INTERACTIVE, SESSION, VISITOR)"]:::backend
-            WS["Serveur WebSockets"]:::backend
+            AdminAPI["Admin API (Campaign Creation)"]:::backend
+            NFCService["NFC Logic"]:::backend
+            SM["State Machine<br>(IDLE, ENGAGED, SESSION, VISITOR)"]:::backend
+            WS["WebSocket Server"]:::backend
             
-            NFCService -->|"Déclenche<br>évènement"| SM
-            SM <-->|"Échange de<br>données"| WS
+            NFCService -->|"Trigger Event"| SM
+            SM <-->|"Exchange Data"| WS
         end
 
-        subgraph Storage ["Stockage Local (Fichiers)"]
-            JSON[("Dossier /assets<br>(Configs JSON & Médias)")]:::storage
+        subgraph Storage ["Storage & Persistence"]
+            DB[("SQL Database<br>(PostgreSQL)")]:::storage
+            JSON[("Local Assets<br>(JSON Configs & Media)")]:::storage
         end
 
         subgraph Frontend ["Frontend"]
-            Vision["Module de Vision<br>(MediaPipe)"]:::frontend
-            Player["Moteur de Rendu UI<br>(HTML/JS/CSS)"]:::frontend
+            Vision["Vision Module<br>(MediaPipe)"]:::frontend
+            Player["UI Engine<br>(HTML/JS/CSS)"]:::frontend
         end
         
-        %% Liens internes au Raspberry Pi
-        AdminAPI -->|"Génère & Sauvegarde"| JSON
-        Player -->|"Charge dynamiquement"| JSON
-        Vision -->|"WebSockets<br>Évènements (Présence, Swipes)"| WS
-        WS -->|"WebSockets<br>Ordres d'affichage (Changement d'état)"| Player
+        %% Internal Raspberry Pi Connections
+        AdminAPI -->|"Persist Profiles & Logs"| DB
+        SM <-->|"Fetch User Data"| DB
+        AdminAPI -->|"Generate & Save"| JSON
+        Player -->|"Load Media Dynamically"| JSON
+        Vision -->|"WebSockets<br>Events (Presence, Swipes)"| WS
+        WS -->|"WebSockets<br>Display Commands"| Player
     end
 
-    %% Liens externes vers le Raspberry Pi
-    Admin -->|"HTTP POST<br>(Création via GUI)"| AdminAPI
-    Cam -->|"Flux vidéo<br>"| Vision
-    NFCReader -->|"Détection de badge"| NFCService
+    %% External Connections
+    Admin -->|"HTTP POST<br>"| AdminAPI
+    Cam -->|"Video Stream"| Vision
+    NFCReader -->|"Badge Detection"| NFCService
 ```
 
 ## Sequence Diagram : 
@@ -113,7 +116,7 @@ sequenceDiagram
     Backend->>Backend: Calcul : Transition IDLE -> INTERACTIVE
     Backend->>Player: [WebSocket] Ordre : STATE_CHANGED (INTERACTIVE)
     Player->>Player: Charge le fichier config.INTERACTIVE.json
-    Player-->>User: Affiche l'écran d'invitation ("Scannez votre badge si vous êtes un étudiant, attendez sinon")
+    Player-->>User: Affiche l'écran d'invitation ("Scannez votre badge si vous êtes un étudiant, levez la main si vous êtes un visiteur")
 
     %% Étape 2 : Authentification NFC
     User->>NFC: Scanne son badge étudiant
