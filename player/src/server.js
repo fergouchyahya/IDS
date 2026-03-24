@@ -1,133 +1,116 @@
 /**
- * IDS — Local Event Ingestion Server (Phase 3)
- * File: player/src/server.js
+ * Player HTTP server composition root.
  *
- * PURPOSE
- *   Accept events over HTTP so we can simulate NFC/vision without hardware.
- *
- * ENDPOINTS
- *   - POST /events  (JSON body: event)
- *   - GET  /state   (current state snapshot)
- *
- * DESIGN
- *   - No external dependencies (uses Node built-in http).
- *   - Strict JSON parsing and strict event validation.
+ * Responsibilities:
+ * - Wire runtime services and dependencies.
+ * - Start HTTP server and route requests.
+ * - Manage shutdown lifecycle.
  */
 
 const http = require("http");
-const { validateEvent } = require("./events");
-const { STATES, transition } = require("./fsm");
+const crypto = require("crypto");
+const { createLogger } = require("../../shared/utils/logger");
+const { createPlayerRouter } = require("./router");
+const { PlayerStateMachine, STATE } = require("./services/state-machine");
+const { normalizeRuntimeConfig, normalizeDetectorConfig } = require("./services/config-service");
+const { createAdminSyncService } = require("./services/admin-sync-service");
+const { renderUI } = require("./services/render-service");
+const { isMovementInputEvent, isDetectorAllowedEvent } = require("./detector/event-utils");
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 1_000_000) {
-        reject(new Error("Body too large"));
-        req.destroy();
-      }
-    });
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(data || "{}"));
-      } catch (e) {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
+const logger = createLogger("ids-player-server");
+
+/**
+ * Creates and starts the IDS player server.
+ *
+ * @param {object} [options={}] - Server options.
+ * @param {object} options.config - Runtime config object.
+ * @param {string} [options.host="127.0.0.1"] - Listening host.
+ * @param {number} [options.port=7070] - Listening port.
+ * @param {string} [options.adminUrl] - Admin URL for sync.
+ * @param {number} [options.syncIntervalMs=4000] - Runtime sync interval.
+ * @param {object} [options.detectorConfig] - Detector config overrides.
+ * @returns {import('http').Server} Started HTTP server.
+ */
+function createServer({ config, host = "127.0.0.1", port = 7070, adminUrl, syncIntervalMs = 4000, detectorConfig } = {}) {
+  const stateMachine = new PlayerStateMachine(config);
+  const detectorToken = crypto.randomBytes(18).toString("hex");
+  const resolvedDetectorConfig = normalizeDetectorConfig(detectorConfig);
+  const startedAt = Date.now();
+
+  const syncService = createAdminSyncService({
+    adminUrl,
+    stateMachine,
+    logger,
+    syncIntervalMs,
   });
-}
 
-function json(res, code, obj) {
-  const body = JSON.stringify(obj, null, 2);
-  res.writeHead(code, {
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(body),
+  stateMachine.scheduleInactivityTimer();
+  syncService.start();
+
+  const route = createPlayerRouter({
+    stateMachine,
+    detectorToken,
+    detectorConfig: resolvedDetectorConfig,
+    startedAt,
+    syncService,
+    logger,
   });
-  res.end(body);
-}
 
-function createServer({ scheduler, port = 7070 } = {}) {
-  let state = STATES.IDLE;
-
-  if (scheduler) {
-    scheduler.onIdleTimeout = () => {
-      const prev = state;
-      try {
-        const t = transition(state, "IDLE");
-        state = t.nextState;
-        console.log("=== STATE TRANSITION ===");
-        if (t.changed) {
-          console.log(`state: ${prev} -> ${state} (inactivity timeout)`);
-        } else {
-          console.log(`state: ${prev} (no change)`);
-        }
-      } catch (e) {
-        console.log("=== STATE ERROR ===");
-        console.log(e.message);
-      }
-    };
+  /**
+   * Handles incoming HTTP requests through the router.
+   *
+   * @param {import('http').IncomingMessage} req - HTTP request.
+   * @param {import('http').ServerResponse} res - HTTP response.
+   * @returns {Promise<void>}
+   */
+  async function handleIncomingRequest(req, res) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    await route(req, res);
   }
 
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
+  /**
+   * Handles server close lifecycle cleanup.
+   */
+  function handleServerClose() {
+    stateMachine.stop();
+    syncService.stop();
+  }
 
-    if (req.method === "GET" && url.pathname === "/state") {
-      return json(res, 200, { state });
-    }
+  /**
+   * Handles successful server listen event.
+   */
+  function handleServerListening() {
+    const address = server.address();
+    const boundPort = typeof address === "object" && address ? address.port : port;
+    logger.info("server_listening", { url: `http://${host}:${boundPort}` });
+    logger.info("flow", {
+      value: "IDLE -> movement_detected -> MENU -> (visitor_selected|nfc_tap) -> INFO -> inactivity -> IDLE",
+    });
+    if (adminUrl) logger.info("runtime_sync_enabled", { runtimeConfigUrl: `${adminUrl}/runtime-config` });
+  }
 
-    if (req.method === "POST" && url.pathname === "/events") {
-      let event;
-      try {
-        event = await readJsonBody(req);
-      } catch (e) {
-        return json(res, 400, { error: e.message });
-      }
+  const server = http.createServer(handleIncomingRequest);
 
-      const v = validateEvent(event);
-      if (!v.ok) {
-        return json(res, 400, { error: v.error });
-      }
-
-      // Log event
-      console.log("");
-      console.log("=== EVENT RECEIVED ===");
-      console.log(JSON.stringify(event, null, 2));
-
-      // Apply transition
-      const prev = state;
-      try {
-        const t = transition(state, event.type);
-        state = t.nextState;
-
-        console.log("=== STATE TRANSITION ===");
-        if (t.changed) {
-          console.log(`state: ${prev} -> ${state}`);
-        } else {
-          console.log(`state: ${prev} (no change)`);
-        }
-
-        if (scheduler) scheduler.handleEvent(event.type);
-
-        return json(res, 200, { ok: true, prevState: prev, nextState: state, changed: t.changed });
-
-      } catch (e) {
-        console.log("=== STATE ERROR ===");
-        console.log(e.message);
-        return json(res, 409, { error: e.message, state });
-      }
-    }
-
-    return json(res, 404, { error: "Not found" });
-  });
-
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`IDS event server listening on http://127.0.0.1:${port}`);
-    console.log("Try:");
-    console.log(`  curl -s http://127.0.0.1:${port}/state | jq`);
-  });
+  server.on("close", handleServerClose);
+  server.listen(port, host, handleServerListening);
 
   return server;
 }
 
-module.exports = { createServer };
+module.exports = {
+  createServer,
+  PlayerStateMachine,
+  STATE,
+  normalizeRuntimeConfig,
+  normalizeDetectorConfig,
+  renderUI,
+  isMovementInputEvent,
+  isDetectorAllowedEvent,
+};

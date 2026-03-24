@@ -4,12 +4,17 @@
  */
 
 const { createServer } = require("./server");
+const { createLogger } = require("../../shared/utils/logger");
+const { getConfig } = require("../../shared/config");
 
-const port = process.env.ADMIN_PORT ? Number(process.env.ADMIN_PORT) : 8081;
+const logger = createLogger("ids-admin-entry");
+const config = getConfig();
+const adminConfig = config.getAdmin();
+const port = Number(adminConfig.port);
 
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-  console.error("Invalid ADMIN_PORT. Use 1..65535.");
+  logger.error("invalid_port", { env: "ADMIN_PORT", value: process.env.ADMIN_PORT });
   process.exit(2);
 }
 
-createServer({ port });
+createServer({ port, host: adminConfig.host });

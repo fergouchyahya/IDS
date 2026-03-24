@@ -2,13 +2,13 @@
   "name": "ids-admin",
   "version": "0.1.0",
   "private": true,
-  "description": "IDS admin control plane (minimal API)",
+  "description": "IDS admin control plane",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
+    "better-sqlite3": "^12.8.0"
   }
 }

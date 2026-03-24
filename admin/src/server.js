@@ -1,120 +1,183 @@
 /**
- * IDS Admin — Minimal HTTP API (Phase 6)
+ * IDS Admin HTTP server composition root.
  *
- * Endpoints:
- *   POST /configs      upload + validate
- *   GET  /configs      list metadata
- *   GET  /configs/:id  fetch full config
+ * Responsibilities:
+ * - Configure shared dependencies.
+ * - Create and start HTTP server.
+ * - Handle unhandled request-level errors.
  */
 
-const http = require("http");
 const path = require("path");
-const crypto = require("crypto");
+const http = require("http");
+const { json } = require("../../shared/utils/http-helpers");
+const { createLogger } = require("../../shared/utils/logger");
+const { renderAdminPage } = require("./render-admin-page");
+const { createAdminRouter } = require("./router");
+const { FileRepository } = require("./storage/repository");
+const { createStorage } = require("./storage");
+const { createStudentDb } = require("./storage/student-db");
+const {
+  ensureUploadDir,
+  processUploadMultipart,
+  resolveMimeByExtension,
+} = require("./utils/media-utils");
+const {
+  createJsonBodyReader,
+  createRawBodyReader,
+  sendValidationError,
+} = require("./utils/request-utils");
+const { createCampaignService } = require("./services/campaign-service");
+const { createConfigService } = require("./services/config-service");
+const { createStudentService } = require("./services/student-service");
+const { createStateService } = require("./services/state-service");
+const { createHealthService } = require("./services/health-service");
+const { createMediaService } = require("./services/media-service");
 
-const Ajv2020 = require("ajv/dist/2020");
-const addFormats = require("ajv-formats");
+const logger = createLogger("ids-admin-server");
 
-const { appendConfigRecord, listConfigMeta, getConfigById } = require("./storage");
+const ADMIN_UI_JS_PATH = path.resolve(__dirname, "../public/admin-ui.js");
+const PUBLIC_DIR = path.resolve(__dirname, "../public");
+const DATA_DIR = process.env.IDS_ADMIN_DATA_DIR
+  ? path.resolve(process.env.IDS_ADMIN_DATA_DIR)
+  : path.resolve(__dirname, "../data");
+const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 1_000_000) {
-        reject(new Error("Body too large"));
-        req.destroy();
+/**
+ * Processes multipart upload using admin defaults.
+ *
+ * @param {object} storage - Storage facade.
+ * @param {object} params - Upload options.
+ * @returns {object} Uploaded media metadata.
+ */
+function processUploadMultipartWithDefaults(storage, params) {
+  return processUploadMultipart({
+    ...params,
+    uploadDir: UPLOAD_DIR,
+    maxUploadSize: MAX_UPLOAD_SIZE,
+    storage,
+  });
+}
+
+/**
+ * Builds all admin domain services.
+ *
+ * @param {object} storage - Storage facade.
+ * @returns {object} Service registry.
+ */
+function buildServices(storage) {
+  const campaigns = createCampaignService({ storage });
+  const config = createConfigService({ storage });
+  const students = createStudentService({ storage });
+  const state = createStateService({ storage, studentService: students });
+  const health = createHealthService({ storage });
+  const media = createMediaService({
+    uploadDir: UPLOAD_DIR,
+    resolveMimeByExtension,
+    processUploadMultipart: (params) => processUploadMultipartWithDefaults(storage, params),
+  });
+
+  return {
+    campaigns,
+    config,
+    students,
+    state,
+    health,
+    media,
+  };
+}
+
+/**
+ * Creates and starts admin HTTP server.
+ *
+ * @param {object} [options={}] - Server options.
+ * @param {number} [options.port=8081] - Server port.
+ * @param {string} [options.host="127.0.0.1"] - Server bind host.
+ * @returns {import('http').Server} Started HTTP server instance.
+ */
+function createServer({ port = 8081, host = "127.0.0.1" } = {}) {
+  ensureUploadDir(UPLOAD_DIR);
+  const startedAt = Date.now();
+
+  const repository = new FileRepository({ dataDir: DATA_DIR });
+  const studentDb = createStudentDb(path.join(DATA_DIR, "students.db"));
+
+  // Migrate student profiles from state.json → SQLite on first run.
+  const initialState = repository.readStateSync();
+  if (Array.isArray(initialState.studentProfiles) && initialState.studentProfiles.length > 0) {
+    studentDb.migrateFromState(initialState.studentProfiles);
+  }
+
+  const storage = createStorage(repository, studentDb);
+
+  const readJsonBody = createJsonBodyReader(storage);
+  const readRawBody = createRawBodyReader(storage, MAX_UPLOAD_SIZE);
+  const services = buildServices(storage);
+
+  /**
+   * Sends normalized validation error for handlers.
+   *
+   * @param {import('http').ServerResponse} res - HTTP response.
+   * @param {Error} err - Validation error.
+   */
+  function handleValidationError(res, err) {
+    return sendValidationError(res, err, storage);
+  }
+
+  const handleRequest = createAdminRouter({
+    logger,
+    startedAt,
+    renderAdminPage,
+    adminUiJsPath: ADMIN_UI_JS_PATH,
+    publicDir: PUBLIC_DIR,
+    uploadDir: UPLOAD_DIR,
+    resolveMimeByExtension,
+    readRawBody,
+    readJsonBody,
+    sendValidationError: handleValidationError,
+    storage,
+    services,
+  });
+
+  /**
+   * Handles incoming requests with top-level error safety.
+   *
+   * @param {import('http').IncomingMessage} req - HTTP request.
+   * @param {import('http').ServerResponse} res - HTTP response.
+   * @returns {Promise<void>}
+   */
+  async function handleIncomingRequest(req, res) {
+    try {
+      await handleRequest(req, res);
+    } catch (error) {
+      logger.error("unhandled_request_error", {
+        message: error?.message,
+        method: req.method,
+        url: req.url,
+      });
+      if (!res.headersSent) {
+        json(res, 500, { error: "internal_error" });
       }
-    });
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(data || "{}"));
-      } catch (e) {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
-  });
-}
-
-function json(res, code, obj) {
-  const body = JSON.stringify(obj, null, 2);
-  res.writeHead(code, {
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(body),
-  });
-  res.end(body);
-}
-
-function formatAjvErrors(errors) {
-  if (!errors || errors.length === 0) return ["Unknown validation error"];
-  return errors.map((e) => {
-    const where = e.instancePath && e.instancePath.length > 0 ? e.instancePath : "/";
-    return `${where} ${e.message}`;
-  });
-}
-
-function buildValidator() {
-  const schemaPath = path.resolve(__dirname, "../../shared/contract/schema/config.schema.json");
-  const schema = JSON.parse(require("fs").readFileSync(schemaPath, "utf8"));
-  const ajv = new Ajv2020({ strict: false, allErrors: true });
-  addFormats(ajv);
-  return ajv.compile(schema);
-}
-
-function checksumOf(obj) {
-  const raw = JSON.stringify(obj);
-  return crypto.createHash("sha256").update(raw).digest("hex");
-}
-
-function createServer({ port = 8081 } = {}) {
-  const validate = buildValidator();
-
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-
-    if (req.method === "GET" && url.pathname === "/configs") {
-      const configs = listConfigMeta();
-      return json(res, 200, { configs });
     }
+  }
 
-    if (req.method === "GET" && url.pathname.startsWith("/configs/")) {
-      const id = url.pathname.split("/")[2];
-      const record = getConfigById(id);
-      if (!record) return json(res, 404, { error: "not_found" });
-      return json(res, 200, record);
-    }
+  /**
+   * Logs server listening event.
+   */
+  function handleServerListening() {
+    const address = server.address();
+    const boundPort = typeof address === "object" && address ? address.port : port;
+    logger.info("server_listening", { url: `http://${host}:${boundPort}` });
+  }
 
-    if (req.method === "POST" && url.pathname === "/configs") {
-      let config;
-      try {
-        config = await readJsonBody(req);
-      } catch (e) {
-        return json(res, 400, { error: "invalid_json", details: [e.message] });
-      }
-
-      const ok = validate(config);
-      if (!ok) {
-        return json(res, 400, { error: "validation_error", details: formatAjvErrors(validate.errors) });
-      }
-
-      const meta = {
-        configId: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        checksum: checksumOf(config),
-      };
-
-      appendConfigRecord({ meta, config });
-      return json(res, 201, meta);
-    }
-
-    return json(res, 404, { error: "not_found" });
-  });
-
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`IDS Admin listening on http://127.0.0.1:${port}`);
-  });
+  const server = http.createServer(handleIncomingRequest);
+  server.listen(port, host, handleServerListening);
 
   return server;
 }
 
-module.exports = { createServer };
+module.exports = {
+  createServer,
+  MAX_UPLOAD_SIZE,
+  UPLOAD_DIR,
+};

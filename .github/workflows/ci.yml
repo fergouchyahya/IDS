@@ -1,21 +1,24 @@
-name: ci
+name: CI
 
 on:
   push:
+    branches: [main, master]
   pull_request:
+    branches: [main, master]
 
 jobs:
-  contract-validate:
+  test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Install contract deps
-        working-directory: shared/contract
-        run: |
-          npm init -y
-          npm i ajv@^8 ajv-formats@^3
-      - name: Validate examples
-        run: make validate
+          node-version: "20"
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run all tests
+        run: make test-all

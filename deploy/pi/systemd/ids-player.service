@@ -1,0 +1,29 @@
+[Unit]
+Description=IDS Player Service
+Wants=network-online.target
+After=network-online.target ids-admin.service
+Requires=ids-admin.service
+
+[Service]
+Type=simple
+User=ids
+Group=ids
+WorkingDirectory=/opt/ids
+EnvironmentFile=/etc/ids/ids.env
+ExecStart=/usr/bin/node /opt/ids/player/src/index.js --config ${IDS_CONFIG} --port ${PLAYER_PORT} --admin-url ${IDS_ADMIN_URL}
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=60
+StartLimitBurst=5
+TimeoutStopSec=10
+SyslogIdentifier=ids-player
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/ids
+LogsDirectory=ids
+
+[Install]
+WantedBy=multi-user.target

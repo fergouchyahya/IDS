@@ -1,0 +1,30 @@
+[Unit]
+Description=IDS Admin Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ids
+Group=ids
+WorkingDirectory=/opt/ids
+EnvironmentFile=/etc/ids/ids.env
+ExecStart=/usr/bin/node /opt/ids/admin/src/index.js
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=60
+StartLimitBurst=5
+TimeoutStopSec=10
+SyslogIdentifier=ids-admin
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ids /var/log/ids
+LogsDirectory=ids
+StateDirectory=ids
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

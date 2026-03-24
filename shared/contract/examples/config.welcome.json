@@ -1,25 +1,93 @@
 {
-  "$comment": "/*\nIDS — Example Config: Welcome (minimal)\n\nWHY THIS EXISTS\n  This is the smallest config that should always validate and always render.\n  It is the 'hello world' of IDS.\n\nWHAT IT SHOULD DEMO\n  - Player can load + validate config\n  - Player can render a TEXT item for durationSec seconds\n\nEDITING NOTES\n  - Keep this file minimal forever.\n  - If you need more fields, create a new example instead.\n*/",
+  "$comment": "Guided flow: idle -> menu -> info (nfc/visitor) with right-hand item cycling and inactivity reset.",
   "campaigns": [
     {
-      "$comment": "/*\nSingle campaign with a single TEXT item.\n*/",
-      "campaignId": "demo-welcome",
-      "campaignName": "Welcome message",
+      "campaignId": "idle-welcome",
+      "campaignName": "Idle Welcome",
       "campaignPriority": 10,
-      "generatedAt": "2026-02-01T10:00:00Z",
+      "generatedAt": "2026-02-24T16:40:00Z",
       "items": [
         {
-          "$comment": "/*\nSingle TEXT item.\n`data` is literal text.\n*/",
-          "contentId": "welcome-1",
+          "contentId": "idle-1",
           "type": "TEXT",
           "data": "Welcome to IDS",
-          "durationSec": 10,
-          "showClock": true,
-          "order": 1
+          "order": 1,
+          "durationSec": 120
+        },
+        {
+          "contentId": "idle-2",
+          "type": "TEXT",
+          "data": "Move your right hand to rotate idle messages",
+          "order": 2,
+          "durationSec": 120
         }
-        
+      ]
+    },
+    {
+      "campaignId": "menu-choices",
+      "campaignName": "Interaction Menu",
+      "campaignPriority": 20,
+      "generatedAt": "2026-02-24T16:40:00Z",
+      "items": [
+        {
+          "contentId": "menu-1",
+          "type": "TEXT",
+          "data": "Choose an option",
+          "order": 1,
+          "durationSec": 60
+        },
+        {
+          "contentId": "menu-2",
+          "type": "TEXT",
+          "data": "NFC TAP or VISITOR",
+          "order": 2,
+          "durationSec": 60
+        }
+      ]
+    },
+    {
+      "campaignId": "info-nfc",
+      "campaignName": "Info - NFC",
+      "campaignPriority": 30,
+      "generatedAt": "2026-02-24T16:40:00Z",
+      "items": [
+        {
+          "contentId": "nfc-info-1",
+          "type": "TEXT",
+          "data": "NFC information page 1",
+          "order": 1,
+          "durationSec": 30
+        },
+        {
+          "contentId": "nfc-info-2",
+          "type": "TEXT",
+          "data": "NFC information page 2",
+          "order": 2,
+          "durationSec": 30
+        }
+      ]
+    },
+    {
+      "campaignId": "info-visitor",
+      "campaignName": "Info - Visitor",
+      "campaignPriority": 30,
+      "generatedAt": "2026-02-24T16:40:00Z",
+      "items": [
+        {
+          "contentId": "visitor-info-1",
+          "type": "TEXT",
+          "data": "Visitor information page 1",
+          "order": 1,
+          "durationSec": 30
+        },
+        {
+          "contentId": "visitor-info-2",
+          "type": "TEXT",
+          "data": "Visitor information page 2",
+          "order": 2,
+          "durationSec": 30
+        }
       ]
     }
   ]
 }
-

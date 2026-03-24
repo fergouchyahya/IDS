@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digital Signage Campaign Builder</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- CENTER: Campaign Editor -->
+    <div class="center-canvas">
+      <section class="overview-shell">
+        <div class="overview-floating-head">
+          <div>
+            <h2 class="overview-title">Campaign Overview</h2>
+            <p class="overview-sub">
+              <span id="overviewCount">0 campaigns</span>
+              <span>|</span>
+              <span id="overviewLiveCount">0 live</span>
+            </p>
+          </div>
+          <div class="overview-controls">
+            <input type="text" class="overview-search" id="sidebarSearch" placeholder="Search by name, UID, or ID" />
+            <select class="overview-filter" id="overviewTypeFilter">
+              <option value="all">All types</option>
+              <option value="idle">Idle</option>
+              <option value="visitor">Visitor</option>
+              <option value="student">Student</option>
+              <option value="menu">Menu</option>
+            </select>
+            <select class="overview-filter" id="overviewStatusFilter">
+              <option value="all">All status</option>
+              <option value="live">Live</option>
+              <option value="draft">Draft</option>
+            </select>
+            <button class="btn-create" onclick="createNewCampaign()">+ Create</button>
+          </div>
+        </div>
+        <div class="overview-grid" id="overviewGrid"></div>
+      </section>
+
+      <header class="canvas-header">
+        <div class="canvas-header-top">
+          <div class="header-title-block">
+            <h1 class="header-title">
+              <input type="text" id="campaignNameInput" placeholder="Untitled Campaign" value="" />
+            </h1>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-ghost" id="previewPlayerBtn" onclick="window.open('http://' + location.hostname + ':7070', '_blank')">&#x25B6; Preview Player</button>
+            <button class="btn btn-secondary" id="publishBtn" onclick="publishCampaign()">Publish</button>
+            <button class="btn btn-primary" id="saveCampaignBtn" onclick="saveBuilderCampaign()">Save</button>
+          </div>
+        </div>
+
+        <div class="canvas-header-bottom">
+          <div class="form-row">
+            <label for="builderType">Type:</label>
+            <select id="builderType"></select>
+          </div>
+          <div class="form-row" id="studentUidWrap" style="display:none">
+            <label for="studentUid">Student UID:</label>
+            <input type="text" id="studentUid" placeholder="e.g. stu-001" style="width: 120px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;" />
+          </div>
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <span class="sync-indicator" id="syncBadge" title="Player connection status">&#x25CF; Checking&hellip;</span>
+            <span class="status-indicator" id="statusBadge">Draft</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="canvas-scroll">
+        <div class="blocks-container">
+          <div id="blocks"></div>
+          <button class="add-block-button" id="addBlockBtn" onclick="showAddBlockMenu()">
+            + Add Block
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Inspector Panel -->
+    <aside class="inspector">
+      <div class="inspector-header">
+        <h3 class="inspector-title">Properties</h3>
+      </div>
+      <div class="inspector-content" id="inspectorContent">
+        <div class="blocks-empty" style="text-align: center; color: var(--text-tertiary); font-size: 12px;">
+          Select a campaign or block to view properties
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Status Toast -->
+  <div id="status" class="status-toast"></div>
+
+  <script src="/services/http.js"></script>
+  <script>
+    // Prompt for API key on first load if not already stored
+    if (!AdminHttp.hasApiKey()) {
+      AdminHttp.promptApiKey("Enter admin API key to manage campaigns:");
+    }
+  </script>
+  <script src="/services/state-store.js"></script>
+  <script src="/services/campaign-selectors.js"></script>
+  <script src="/services/validation.js"></script>
+  <script src="/services/editor-view.js"></script>
+  <script src="/services/editor-controller.js"></script>
+  <script src="/services/runtime-context.js"></script>
+  <script src="/services/runtime-deps.js"></script>
+  <script src="/services/render-helpers.js"></script>
+  <script src="/services/block-ops.js"></script>
+  <script src="/services/actions.js"></script>
+  <script src="/services/ui-events.js"></script>
+  <script src="/services/editor-state.js"></script>
+  <script src="/services/orchestrator.js"></script>
+  <script src="/services/legacy-bridge.js"></script>
+  <script src="/components/blocks.js"></script>
+  <script src="/components/overview.js"></script>
+  <script src="/components/builder.js"></script>
+  <script src="/components/inspector.js"></script>
+  <script src="/admin-ui.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    // Player sync indicator — polls player health every 5s
+    (function initSyncIndicator() {
+      const badge = document.getElementById('syncBadge');
+      if (!badge) return;
+      const playerBase = 'http://' + location.hostname + ':7070';
+      function check() {
+        fetch(playerBase + '/current', { mode: 'cors' })
+          .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(function() {
+            badge.textContent = '\u25CF Player connected';
+            badge.className = 'sync-indicator synced';
+          })
+          .catch(function() {
+            badge.textContent = '\u25CB Player offline';
+            badge.className = 'sync-indicator offline';
+          });
+      }
+      check();
+      setInterval(check, 5000);
+    })();
+  </script>
+</body>
+</html>
