@@ -30,6 +30,13 @@
         const isSelected = selectedBlockIndex === idx;
         const preview = type === "TEXT" ? block.data : `${type.toLowerCase()} content`;
 
+        let mediaPreview = "";
+        if (type === "IMAGE" && block.data) {
+          mediaPreview = `<div class="block-media-preview"><img src="${escapeHtml(block.data)}" alt="preview" /></div>`;
+        } else if (type === "VIDEO" && block.data) {
+          mediaPreview = `<div class="block-media-preview"><video src="${escapeHtml(block.data)}" muted></video></div>`;
+        }
+
         return `
           <div class="block-card ${isSelected ? "selected" : ""}"
                draggable="true"
@@ -47,6 +54,7 @@
                 <span class="block-preview">${escapeHtml(preview.slice(0, 60))}</span>
                 <span class="block-duration">${block.durationSec || 30}s</span>
               </div>
+              ${mediaPreview}
             </div>
             <div class="block-menu" onclick="event.stopPropagation(); showBlockMenu(${idx})">∴</div>
           </div>

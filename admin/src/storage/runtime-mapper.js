@@ -38,7 +38,7 @@ function buildGeneratedStudentCampaign(profile) {
       {
         contentId: "student-auto-2",
         type: "IMAGE",
-        data: profile.timetableImageUrl,
+        data: resolveMediaUrl(profile.timetableImageUrl),
         order: 2,
         durationSec: 25,
       },
@@ -93,6 +93,37 @@ function listGeneratedStudentCampaigns(state) {
 }
 
 /**
+ * Resolves a single /media/ path to an absolute admin URL.
+ *
+ * @param {string} url - URL or path.
+ * @returns {string} Resolved URL.
+ */
+function resolveMediaUrl(url) {
+  if (typeof url === "string" && url.startsWith("/media/")) {
+    const base = (process.env.IDS_PUBLIC_ADMIN_URL || "http://127.0.0.1:8081").replace(/\/$/, "");
+    return `${base}${url}`;
+  }
+  return url;
+}
+
+/**
+ * Resolves /media/ paths to absolute admin URLs so the player browser can fetch them.
+ *
+ * @param {object|null} campaign - Campaign object with items.
+ * @returns {object|null} Campaign with resolved media URLs.
+ */
+function resolveMediaUrls(campaign) {
+  if (!campaign || !Array.isArray(campaign.items)) return campaign;
+  return {
+    ...campaign,
+    items: campaign.items.map((item) => ({
+      ...item,
+      data: resolveMediaUrl(item.data),
+    })),
+  };
+}
+
+/**
  * Maps storage state to runtime config used by player.
  *
  * @param {object} state - Storage state.
@@ -105,9 +136,9 @@ function toRuntimeConfig(state) {
   return {
     settings: state.settings,
     active: state.active,
-    idleCampaign,
-    menuCampaign: state.menuCampaign,
-    visitorCampaign,
+    idleCampaign: resolveMediaUrls(idleCampaign),
+    menuCampaign: resolveMediaUrls(state.menuCampaign),
+    visitorCampaign: resolveMediaUrls(visitorCampaign),
     students: state.students,
     updatedAt: state.updatedAt,
   };
