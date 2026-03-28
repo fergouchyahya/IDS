@@ -203,14 +203,14 @@ sequenceDiagram
 ```mermaid
 classDiagram
     class AdminState {
-        settings
-        active
-        menuCampaign
-        idleCampaigns[]
-        visitorCampaigns[]
-        students{}
-        studentProfiles{}
-        updatedAt
+        settings: Settings
+        active: boolean
+        menuCampaign: Campaign
+        idleCampaigns: Campaign[]
+        visitorCampaigns: Campaign[]
+        students: StudentCampaignMap
+        studentProfiles: StudentProfileMap
+        updatedAt: string
     }
 
     class Campaign {
@@ -220,26 +220,34 @@ classDiagram
         items: CampaignItem[]
     }
 
+    class CampaignItemType {
+        <<enumeration>>
+        TEXT
+        IMAGE
+        VIDEO
+    }
+
     class CampaignItem {
         contentId: string
-        type: TEXT | IMAGE | VIDEO
+        type: CampaignItemType
         data: string
         order: number
         durationSec: number
     }
 
     class RuntimeConfig {
-        settings
-        active
-        idleCampaign
-        menuCampaign
-        visitorCampaign
-        students{}
-        updatedAt
+        settings: Settings
+        active: boolean
+        idleCampaign: Campaign
+        menuCampaign: Campaign
+        visitorCampaign: Campaign
+        students: StudentCampaignMap
+        updatedAt: string
     }
 
     AdminState "1" --> "*" Campaign
     Campaign "1" --> "*" CampaignItem
+    CampaignItem --> CampaignItemType
     AdminState ..> RuntimeConfig : toRuntimeConfig()
 ```
 
