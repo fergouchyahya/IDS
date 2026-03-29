@@ -352,6 +352,7 @@ All admin mutation endpoints (POST/PUT/DELETE) require an API key via `Authoriza
 | `DELETE` | `/api/campaigns/:id` | Yes | Delete campaign |
 | `POST` | `/api/menu-campaign` | Yes | Set menu campaign |
 | `POST` | `/api/students` | Yes | Create/update student |
+| `POST` | `/api/students/import` | Yes | Bulk import student profiles |
 | `GET` | `/api/students/:uid/campaign` | No | Generated student campaign |
 | `DELETE` | `/api/students/:uid` | Yes | Delete student |
 | `POST` | `/api/media/upload` | Yes | Upload media file |
@@ -392,6 +393,8 @@ flowchart LR
         Browser[🖥️ Operator Browser] --> A
     end
 ```
+
+> **Note:** The operator browser accesses the admin interface via SSH tunnel — the admin service is bound to loopback on the Pi and is not exposed to the open network.
 
 **Key paths on the Pi:**
 

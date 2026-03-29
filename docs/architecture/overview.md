@@ -164,6 +164,8 @@ sequenceDiagram
     PIR->>Player: POST /detector/movement
     Player->>Screen: Show MENU
 
+    Note over Player: State: MENU (waiting for visitor selection or NFC tap)
+
     Person->>NFC: Taps student card
     NFC->>Player: POST /events {nfc_tap, uid}
     Player->>Admin: GET /api/students/:uid/campaign

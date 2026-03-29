@@ -74,8 +74,6 @@ The system is **stage-ready** and deployed on Raspberry Pi:
 
 | Item | Notes |
 |------|-------|
-| **Project flyer** | Visual flyer for project presentation — for later |
-| **Final documentation** | Comprehensive project report for submission — for later |
 | Admin UI decomposition | Continue breaking browser-side modules into smaller files |
 
 ---
